@@ -1,0 +1,889 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<title>AIの文とお店の情報の照らし合わせ</title>
+<meta name="description" content="お店の営業時間・休み・料金・連絡先を一度登録しておき、AIに書かせたお知らせを貼ると、登録と違う所に印が付きます。貼った文は保存も送信もしません。">
+<style>
+  :root {
+    --bg: #f4f6f2; --surface: #ffffff; --ink: #18211a; --ink2: #33413a; --ink3: #4d5b52;
+    --line: #d6ddd5; --line-strong: #6b7a6f; --accent: #3E5B3A; --accent-ink: #ffffff; --accent-soft: #e6eee3;
+    --diff: #B5402A; --diff-soft: #fbe8e3; --same: #3E5B3A; --same-soft: #e3eedf; --none: #5c5f66; --none-soft: #ececee;
+    --check: #7a5a00; --check-soft: #fbf1d3; --notice: #eaf0e7;
+    --font: "Hiragino Sans","Yu Gothic","BIZ UDPGothic","Noto Sans JP",system-ui,sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101511; --surface: #18201a; --ink: #e9f0e8; --ink2: #cbd6c9; --ink3: #aebaac;
+      --line: #2d3a30; --line-strong: #84958a; --accent: #A9C99B; --accent-ink: #13200f; --accent-soft: #24331f;
+      --diff: #F0A08F; --diff-soft: #3d221c; --same: #A9C99B; --same-soft: #22301f; --none: #c3c6cc; --none-soft: #2c2e33;
+      --check: #f0cf6e; --check-soft: #3a3015; --notice: #1c261d;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 16px; line-height: 1.6; }
+  main { max-width: 1080px; margin: 0 auto; padding: 16px 16px 32px; }
+  h1 { font-size: 22px; line-height: 1.3; margin: 8px 0 8px; }
+  h2 { font-size: 18px; line-height: 1.4; margin: 0 0 10px; }
+  h3 { font-size: 16px; line-height: 1.4; margin: 16px 0 6px; }
+  p { margin: 0 0 10px; }
+  .lead { color: var(--ink2); }
+  .notice { background: var(--notice); border: 1px solid var(--line-strong); border-left: 6px solid var(--accent); border-radius: 6px;
+    padding: 8px 12px 8px 28px; margin: 0 0 14px; font-size: 14px; color: var(--ink2); }
+  .notice li { margin: 2px 0; }
+  .small { font-size: 14px; color: var(--ink3); }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 14px; min-width: 0; }
+  label.f { display: block; font-weight: 600; margin: 0 0 4px; }
+  input[type=text], input[type=email], input[type=tel], input[type=url], textarea {
+    display: block; width: 100%; max-width: 100%; min-width: 0; min-height: 44px; font: inherit; font-size: 16px; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--line-strong); border-radius: 6px; padding: 8px 10px; margin: 0 0 10px; -webkit-appearance: none; appearance: none; }
+  textarea { resize: vertical; min-height: 140px; line-height: 1.6; }
+  input:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus-visible, a:focus-visible, .chk:focus-within {
+    outline: 3px solid var(--accent); outline-offset: 2px; }
+  button { font: inherit; font-size: 16px; min-height: 44px; min-width: 44px; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--line-strong);
+    background: var(--surface); color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
+  .msg { font-size: 14px; color: var(--ink2); margin: 0 0 8px; min-height: 1.4em; }
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 0 0 12px; }
+  .tabs button { font-weight: 700; border-width: 2px; }
+  .tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  /* 営業時間 */
+  .hours { display: grid; grid-template-columns: 2.2em minmax(0, 1fr) 1.2em minmax(0, 1fr) 4.8em; gap: 6px; align-items: center; margin: 0 0 10px; }
+  .hours .d { font-weight: 700; text-align: center; }
+  .hours .t { text-align: center; color: var(--ink3); }
+  .hours input { margin: 0; text-align: center; padding: 8px 4px; }
+  .hours input:disabled { opacity: .45; }
+  .chk { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 44px; border: 1px solid var(--line-strong); border-radius: 6px; cursor: pointer; font-size: 15px; }
+  .chk input { width: 20px; height: 20px; margin: 0; }
+  .chk.on { background: var(--diff-soft); border-color: var(--diff); font-weight: 700; }
+  /* メニュー・やっていないこと */
+  .rows { list-style: none; margin: 0 0 8px; padding: 0; }
+  .rows li { display: grid; gap: 6px; border-top: 1px solid var(--line); padding: 8px 0; }
+  .rows li:first-child { border-top: 0; }
+  .rows.menu li { grid-template-columns: minmax(0, 1fr) 6.5em 44px; grid-template-areas: "n p d" "a a a"; }
+  .rows.menu .n { grid-area: n; } .rows.menu .p { grid-area: p; } .rows.menu .del { grid-area: d; } .rows.menu .a { grid-area: a; }
+  .rows.nots li { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 44px; }
+  .rows input { margin: 0; }
+  .rows .del { padding: 0; }
+  .two { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 10px; }
+  .updated { font-size: 14px; color: var(--ink3); margin: 0 0 10px; }
+  details > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-weight: 600; }
+  /* 照らし合わせ */
+  .summary { display: flex; flex-wrap: wrap; gap: 6px 8px; margin: 0 0 10px; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 4px 12px; font-weight: 700; font-size: 15px; border: 2px solid; }
+  .pill.diff { color: var(--diff); border-color: var(--diff); background: var(--diff-soft); }
+  .pill.same { color: var(--same); border-color: var(--same); background: var(--same-soft); }
+  .pill.check { color: var(--check); border-color: var(--check); background: var(--check-soft); }
+  .pill.none { color: var(--none); border-color: var(--none); background: var(--none-soft); }
+  .zero { font-weight: 600; color: var(--ink2); }
+  .textview { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 6px; padding: 10px 12px; margin: 0 0 10px; min-height: 3em; line-height: 2.1; }
+  .textview.empty { color: var(--ink3); line-height: 1.6; }
+  .mk { padding: 1px 2px; border-radius: 3px; box-decoration-break: clone; -webkit-box-decoration-break: clone; text-underline-offset: 4px; text-decoration-thickness: 2px; scroll-margin: 80px; }
+  .mk .lb { display: inline-block; font-size: 11px; font-weight: 800; line-height: 1.35; border-radius: 3px; padding: 0 4px; margin-right: 3px; vertical-align: 2px; text-decoration: none; }
+  .mk.diff { background: var(--diff-soft); text-decoration-line: underline; text-decoration-style: wavy; text-decoration-color: var(--diff); }
+  .mk.same { text-decoration-line: underline; text-decoration-style: solid; text-decoration-color: var(--same); }
+  .mk.none { text-decoration-line: underline; text-decoration-style: dotted; text-decoration-color: var(--none); }
+  .mk.check { background: var(--check-soft); text-decoration-line: underline; text-decoration-style: double; text-decoration-color: var(--check); }
+  .mk.diff .lb { background: var(--diff); color: var(--surface); }
+  .mk.same .lb { background: var(--same); color: var(--surface); }
+  .mk.none .lb { background: var(--none); color: var(--surface); }
+  .mk.check .lb { background: var(--check); color: var(--surface); }
+  .mk.flash { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .items { list-style: none; margin: 0; padding: 0; }
+  .items li { border-top: 1px solid var(--line); }
+  .items li:first-child { border-top: 0; }
+  .items button { display: block; width: 100%; text-align: left; border: 0; border-radius: 0; background: none; padding: 10px 2px; line-height: 1.55; }
+  .items .hd { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; margin-bottom: 2px; }
+  .items .st { display: inline-block; font-size: 13px; font-weight: 800; border-radius: 4px; padding: 0 6px; color: var(--surface); }
+  .items .st.diff { background: var(--diff); } .items .st.same { background: var(--same); } .items .st.none { background: var(--none); } .items .st.check { background: var(--check); }
+  .items .kd { font-size: 13px; font-weight: 700; color: var(--ink3); }
+  .items .ln { font-size: 13px; color: var(--ink3); }
+  .items .row { display: block; overflow-wrap: anywhere; font-size: 15px; }
+  .items .row b { font-weight: 700; margin-right: 4px; }
+  .items .nt { display: block; font-size: 14px; color: var(--ink2); overflow-wrap: anywhere; }
+  .gate { border: 2px solid var(--line-strong); background: var(--notice); border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; }
+  .mw-footer { box-sizing: border-box; width: 100%; max-width: 100%; margin: 24px 0 0; padding: 16px; background: #F7F7F8;
+    border: 1px solid #D8D8DC; border-radius: 6px; color: #3A3A3E; font-family: system-ui, sans-serif; font-size: 12px; line-height: 1.7; }
+  .mw-footer p { margin: 0 0 6px; } .mw-footer p:last-child { margin-bottom: 0; } .mw-footer a { color: #0B5AA6; display: inline-block; padding: 13px 0; }
+  @media (min-width: 640px) { .two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+  @media (min-width: 880px) {
+    .layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+    .sticky { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
+    .tabs { max-width: 520px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>AIの文とお店の情報の照らし合わせ</h1>
+  <p class="lead">お店の情報を一度登録しておき、AIに書かせたお知らせなどを貼ると、営業時間・休み・料金・連絡先が登録と違う所に印が付きます。</p>
+  <ul class="notice">
+    <li>見るのは登録した項目（営業時間・休み・料金・連絡先・やっていないこと）だけです。店名の書き間違い・誤字・登録していない事実は見つけられません。</li>
+    <li>食い違いが見つからなくても、正しいとは限りません。最後はご自身の目で確かめてください。</li>
+    <li>お店の情報はこの端末にだけ残ります。貼った文は保存も送信もしません（閲覧数を数えるアクセス解析だけ使っています）。</li>
+  </ul>
+  <div class="tabs" role="tablist" aria-label="画面の切り替え">
+    <button type="button" role="tab" id="tab-shop" aria-controls="pane-shop" aria-selected="false">① お店の情報</button>
+    <button type="button" role="tab" id="tab-check" aria-controls="pane-check" aria-selected="false">② AIの文を見る</button>
+  </div>
+
+  <section id="pane-shop" role="tabpanel" aria-labelledby="tab-shop" hidden>
+    <div class="panel">
+      <h2>お店の情報を登録する</h2>
+      <p class="small">入力した内容はこの端末のブラウザに自動で残ります。季節の営業時間・臨時休業・期間限定メニューは扱いません（いつもの内容を1種類だけ）。</p>
+      <p class="updated" id="updated"></p>
+      <p class="msg" id="storemsg" role="status"></p>
+      <label class="f" for="shopname">店名（表示用。照らし合わせには使いません）</label>
+      <input type="text" id="shopname" maxlength="60" autocomplete="off">
+
+      <h3>営業時間</h3>
+      <p class="small">「10:00」「10」「1000」のように入れてください。休みの曜日は「休み」に印を付けます。</p>
+      <div class="hours" id="hours"></div>
+      <div class="btns"><button type="button" id="weekday">月曜と同じ時間を火〜金にも入れる</button></div>
+      <label class="f" for="lastorder">受付終了・ラストオーダー（任意）</label>
+      <input type="text" id="lastorder" maxlength="10" inputmode="numeric" placeholder="例: 18:30" autocomplete="off">
+
+      <h3>メニューと料金（税込）</h3>
+      <p class="small">名前の別の書き方があれば「、」で区切って足せます（例: カット、カット料金）。30行まで。</p>
+      <ul class="rows menu" id="menu"></ul>
+      <div class="btns"><button type="button" id="addmenu">メニューを1行足す</button></div>
+
+      <h3>連絡先</h3>
+      <label class="f" for="address">住所</label>
+      <input type="text" id="address" maxlength="120" autocomplete="off">
+      <div class="two">
+        <div><label class="f" for="phone0">電話</label><input type="tel" id="phone0" maxlength="20" autocomplete="off"></div>
+        <div><label class="f" for="phone1">電話（2つ目・任意）</label><input type="tel" id="phone1" maxlength="20" autocomplete="off"></div>
+      </div>
+      <label class="f" for="email">メール</label>
+      <input type="email" id="email" maxlength="120" autocomplete="off">
+      <div class="two">
+        <div><label class="f" for="url0">ホームページ・予約ページ</label><input type="url" id="url0" maxlength="200" autocomplete="off"></div>
+        <div><label class="f" for="url1">2つ目（任意）</label><input type="url" id="url1" maxlength="200" autocomplete="off"></div>
+      </div>
+
+      <h3>やっていないこと</h3>
+      <p class="small">AIがつい書き足しがちなことを登録します。文にその言葉が出たら「確認」の印を付けます（書き方が合っているかの判断はしません）。10行まで。</p>
+      <ul class="rows nots" id="nots"></ul>
+      <div class="btns"><button type="button" id="addnot">1行足す</button></div>
+
+      <h3>登録の書き出し・読み込み・消去</h3>
+      <div class="btns">
+        <button type="button" id="sampleshop">例のお店を入れる</button>
+        <button type="button" id="resetshop">登録を消す</button>
+      </div>
+      <details>
+        <summary>別の端末へ移す（文字でコピー／貼って読み込む）</summary>
+        <div class="btns"><button type="button" id="exportbtn">登録を文字でコピー</button></div>
+        <p class="msg" id="exportmsg" role="status"></p>
+        <textarea id="exportbox" rows="4" readonly hidden aria-label="登録の文字"></textarea>
+        <label class="f" for="importbox">コピーした文字をここに貼る</label>
+        <textarea id="importbox" rows="4" autocomplete="off"></textarea>
+        <div class="btns"><button type="button" id="importbtn">貼った文字を読み込む</button></div>
+        <p class="msg" id="importmsg" role="status"></p>
+      </details>
+      <div class="btns"><button type="button" class="primary" id="gocheck">② AIの文を見る へ</button></div>
+    </div>
+  </section>
+
+  <section id="pane-check" role="tabpanel" aria-labelledby="tab-check" hidden>
+    <div class="gate" id="gate" hidden>
+      <p>先にお店の情報を登録してください。登録した項目とだけ照らし合わせます。</p>
+      <div class="btns"><button type="button" class="primary" id="goshop">① お店の情報 へ</button></div>
+    </div>
+    <div class="layout">
+      <div>
+        <div class="panel">
+          <h2>AIが書いた文を貼る</h2>
+          <label class="f" for="ai">お知らせ・投稿・紹介文など（10,000字まで。保存しません）</label>
+          <textarea id="ai" rows="7" maxlength="10000" autocomplete="off" placeholder="ここに貼ってください"></textarea>
+          <div class="btns">
+            <button type="button" id="sampletext">例文を入れる</button>
+            <button type="button" id="cleartext">消す</button>
+          </div>
+          <p class="small" id="ailen">0 / 10,000字</p>
+          <h3>印をつけた文</h3>
+          <div class="textview empty" id="marked">文を貼ると、登録と照らし合わせた所に印が付きます。</div>
+        </div>
+      </div>
+      <div class="sticky">
+        <div class="panel">
+          <h2>照らし合わせの結果</h2>
+          <div id="summary" aria-live="polite"><p class="small">まだ文がありません。</p></div>
+          <ul class="items" id="items"></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="mw-footer">
+    <p>みちAIワークス（MICHI AI WORKS）／代表 田中　泉</p>
+    <p>運営: <a href="https://michi-portfolio.vercel.app/" rel="noopener">みちAIワークス 公式サイト</a>（https://michi-portfolio.vercel.app/ ）／ お問い合わせ: <a href="mailto:nncf123nncf@gmail.com">nncf123nncf@gmail.com</a></p>
+    <p>登録したお店の情報は、お使いの端末のブラウザ（localStorage）にだけ保存します。貼った文は保存も送信もしません。このページはAIにつながっていません。アクセス解析（Cloudflare Web Analytics）で、ページの閲覧状況（閲覧数・参照元・ブラウザの種類など）を計測しています。登録した情報や貼った文は送りません。</p>
+    <p>ログイン・会員登録・パスワードの入力を求めることはありません。</p>
+  </footer>
+</main>
+
+<script id="core">
+var SF = (function () {
+  'use strict';
+  var MAX = 10000, IMPORT_MAX = 50000, MENU_MAX = 30, NOT_MAX = 10;
+  var DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun', 'hol'];
+  var DLAB = { mon: '月', tue: '火', wed: '水', thu: '木', fri: '金', sat: '土', sun: '日', hol: '祝' };
+  var DCH = { '月': 'mon', '火': 'tue', '水': 'wed', '木': 'thu', '金': 'fri', '土': 'sat', '日': 'sun', '祝': 'hol' };
+  var KIND = { hours: '営業時間', time: '時刻', day: '休み・営業日', price: '料金', phone: '電話', email: 'メール', url: 'URL', address: '住所', not: 'やっていないこと' };
+  var STATUS = { diff: '違う', same: '同じ', none: '登録なし', check: '確認' };
+
+  /* ---- 正規化（Day078と同じ。1文字ずつNFKC。a[i]/b[i]=正規化後のi文字目が対応する元の範囲[a,b)） ---- */
+  var HY = 'ー-−‐‑‒–—―─━﹣';
+  function isDigit(c) { return c >= '0' && c <= '9'; }
+  function normalize(str) {
+    var s = [], a = [], b = [], i = 0, n = str.length;
+    while (i < n) {
+      var cp = str.codePointAt(i), len = cp > 0xFFFF ? 2 : 1, ch = str.substr(i, len), nf = ch.normalize('NFKC');
+      for (var k = 0; k < nf.length; k++) { s.push(nf.charAt(k)); a.push(i); b.push(i + len); }
+      i += len;
+    }
+    /* 数字のそばの長音・ハイフン類だけを半角ハイフンへ */
+    for (var j = 0; j < s.length; j++) {
+      if (HY.indexOf(s[j]) < 0) continue;
+      var p = j - 1; while (p >= 0 && s[p] === ' ') p--;
+      var q = j + 1; while (q < s.length && s[q] === ' ') q++;
+      if ((p >= 0 && isDigit(s[p])) || (q < s.length && isDigit(s[q]))) s[j] = '-';
+    }
+    return { s: s.join(''), a: a, b: b };
+  }
+  function nf(t) { return String(t || '').normalize('NFKC'); }
+  function digitsOf(t) { return t.replace(/\D/g, ''); }
+
+  /* ---- 時刻 ---- */
+  function parseTime(v) {
+    var t = nf(v).replace(/\s/g, ''), m, h, mi;
+    if (!t) return null;
+    if ((m = /^(\d{3,4})$/.exec(t))) { h = +m[1].slice(0, -2); mi = +m[1].slice(-2); }
+    else if ((m = /^(\d{1,2})(?:[:.時](\d{1,2})?分?)?$/.exec(t))) { h = +m[1]; mi = m[2] ? +m[2] : 0; }
+    else return null;
+    if (h > 29 || mi > 59) return null;
+    return h * 60 + mi;
+  }
+  function fmt(min) { var h = Math.floor(min / 60), m = min % 60; return h + ':' + (m < 10 ? '0' : '') + m; }
+  function parsePrice(v) { var t = nf(v).replace(/[,\s円¥]/g, ''); return /^\d{1,9}$/.test(t) ? +t : null; }
+  function yen(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '円'; }
+
+  /* ---- 登録 ---- */
+  function blankShop() {
+    var h = {}; DAYS.forEach(function (d) { h[d] = { closed: false, open: '', close: '' }; });
+    return { name: '', hours: h, lastOrder: '', menu: [], address: '', phones: ['', ''], email: '', urls: ['', ''], nots: [], updated: '' };
+  }
+  function str(v, max) { return typeof v === 'string' ? v.slice(0, max) : ''; }
+  function sanitize(o) {
+    var s = blankShop();
+    if (!o || typeof o !== 'object') return s;
+    s.name = str(o.name, 60); s.lastOrder = str(o.lastOrder, 10); s.address = str(o.address, 120); s.email = str(o.email, 120);
+    s.updated = /^\d{4}-\d{2}-\d{2}$/.test(o.updated) ? o.updated : '';
+    if (o.hours && typeof o.hours === 'object') DAYS.forEach(function (d) {
+      var x = o.hours[d]; if (!x || typeof x !== 'object') return;
+      s.hours[d] = { closed: x.closed === true, open: str(x.open, 10), close: str(x.close, 10) };
+    });
+    if (Array.isArray(o.phones)) s.phones = [str(o.phones[0], 20), str(o.phones[1], 20)];
+    if (Array.isArray(o.urls)) s.urls = [str(o.urls[0], 200), str(o.urls[1], 200)];
+    if (Array.isArray(o.menu)) s.menu = o.menu.slice(0, MENU_MAX).filter(function (x) { return x && typeof x === 'object'; })
+      .map(function (x) { return { name: str(x.name, 60), alias: str(x.alias, 200), price: str(x.price, 20) }; });
+    if (Array.isArray(o.nots)) s.nots = o.nots.slice(0, NOT_MAX).filter(function (x) { return x && typeof x === 'object'; })
+      .map(function (x) { return { word: str(x.word, 40), note: str(x.note, 80) }; });
+    return s;
+  }
+  function exportText(shop) { return JSON.stringify({ app: 'shop-facts-check', v: 1, shop: sanitize(shop) }); }
+  function importText(text) {
+    if (typeof text !== 'string' || !text.trim()) return { error: '文字が空です' };
+    if (text.length > IMPORT_MAX) return { error: '文字が長すぎます（50,000字まで）' };
+    var o; try { o = JSON.parse(text.trim()); } catch (e) { return { error: '読み込めない形の文字です。「登録を文字でコピー」でコピーした文字をそのまま貼ってください' }; }
+    if (!o || o.app !== 'shop-facts-check' || !o.shop) return { error: 'このページで書き出した文字ではないようです' };
+    return { shop: sanitize(o.shop) };
+  }
+  function isEmpty(shop) {
+    if (!shop) return true;
+    if (shop.address.trim() || shop.email.trim() || shop.lastOrder.trim()) return false;
+    if (shop.phones.some(function (x) { return x.trim(); }) || shop.urls.some(function (x) { return x.trim(); })) return false;
+    if (shop.menu.some(function (x) { return x.name.trim() && parsePrice(x.price) !== null; })) return false;
+    if (shop.nots.some(function (x) { return x.word.trim(); })) return false;
+    return !DAYS.some(function (d) { var h = shop.hours[d]; return h.closed || parseTime(h.open) !== null; });
+  }
+  /* 曜日ごとの状態: closed / open{o,c} / unreg */
+  function dayState(shop, d) {
+    var h = shop.hours[d];
+    if (h.closed) return { kind: 'closed' };
+    var o = parseTime(h.open), c = parseTime(h.close);
+    if (o === null || c === null) return { kind: 'unreg' };
+    return { kind: 'open', o: o, c: c };
+  }
+  /* 曜日だけなら「月・水曜」、祝日を含むなら「土・日・祝」 */
+  function joinDays(ds) { return ds.map(function (d) { return DLAB[d]; }).join('・') + (ds.length && ds.indexOf('hol') < 0 ? '曜' : ''); }
+  /* 同じ時間の曜日をまとめる: 「月・水・木・金曜 10:00〜19:00」 */
+  function groupHours(list) {
+    var keys = [], map = {};
+    list.forEach(function (x) { var k = fmt(x.st.o) + '〜' + fmt(x.st.c); if (!map[k]) { map[k] = []; keys.push(k); } map[k].push(x.d); });
+    return keys.map(function (k) { return joinDays(map[k]) + ' ' + k; }).join('、');
+  }
+  function hoursSummary(shop) {
+    var groups = [], closed = [], map = {};
+    DAYS.forEach(function (d) {
+      var st = dayState(shop, d);
+      if (st.kind === 'closed') closed.push(d);
+      else if (st.kind === 'open') { var k = fmt(st.o) + '〜' + fmt(st.c); if (!map[k]) { map[k] = []; groups.push(k); } map[k].push(d); }
+    });
+    var out = groups.map(function (k) { return joinDays(map[k]) + ' ' + k; });
+    if (closed.length) out.push('休み: ' + joinDays(closed));
+    return out.join('／') || '（営業時間の登録なし）';
+  }
+  function closedWeekdays(shop) { return DAYS.filter(function (d) { return d !== 'hol' && dayState(shop, d).kind === 'closed'; }); }
+
+  /* ---- 曜日の言い方 ---- */
+  var D1 = '[月火水木金土日]', DD = '(?:' + D1 + '(?:曜日?)?|祝日?)';
+  var DAYSEQ = '(?:平日|週末|祝祭日|祝日|土日祝日?|' + DD + '(?:\\s?[・、,~〜\\-]\\s?' + DD + ')+(?:曜日?)?|' + D1 + '曜日?|土日)';
+  var DAYLIST = DAYSEQ + '(?:\\s?(?:と|・|、|,|や)\\s?' + DAYSEQ + ')*';
+  function expandSeq(t) {
+    if (t === '平日') return ['mon', 'tue', 'wed', 'thu', 'fri'];
+    if (t === '週末') return ['sat', 'sun'];
+    if (t === '祝日' || t === '祝祭日') return ['hol'];
+    var u = t.replace(/祝祭日|祝日/g, '祝').replace(/曜日|曜/g, ''), out = [], prev = null, range = false;
+    for (var i = 0; i < u.length; i++) {
+      var c = u.charAt(i);
+      if (DCH[c]) {
+        var d = DCH[c];
+        if (range && prev && d !== 'hol' && prev !== 'hol') {
+          var a = DAYS.indexOf(prev), b = DAYS.indexOf(d);
+          if (a < b) for (var k = a + 1; k < b; k++) out.push(DAYS[k]);
+          else if (a > b) { for (var k2 = a + 1; k2 < 7; k2++) out.push(DAYS[k2]); for (var k3 = 0; k3 < b; k3++) out.push(DAYS[k3]); }
+        }
+        out.push(d); prev = d; range = false;
+      } else if (c === '~' || c === '〜' || c === '-') range = true;
+    }
+    return out.filter(function (d, i) { return out.indexOf(d) === i; });
+  }
+  /* 文字列中の曜日の言い方を全部探す（前が数字のものは日付の一部として除く） */
+  function findDays(s, from, to) {
+    var re = new RegExp(DAYSEQ, 'g'), out = [], m, part = s.slice(from, to);
+    while ((m = re.exec(part))) {
+      var p = s.charAt(from + m.index - 1);
+      if (isDigit(p)) continue;
+      out.push({ s: from + m.index, e: from + m.index + m[0].length, days: expandSeq(m[0]) });
+    }
+    return out;
+  }
+  function daysIn(text) { var out = []; findDays(text, 0, text.length).forEach(function (x) { x.days.forEach(function (d) { if (out.indexOf(d) < 0) out.push(d); }); }); return out; }
+
+  /* ---- 連絡先の取り出し（Day073/078の規則） ---- */
+  var TLD = '(?:co\\.jp|ne\\.jp|or\\.jp|ac\\.jp|go\\.jp|com|net|org|jp|io|info|biz|dev|app|me|co)';
+  var PREFS = '北海道|東京都|大阪府|京都府|(?:青森|岩手|宮城|秋田|山形|福島|茨城|栃木|群馬|埼玉|千葉|神奈川|新潟|富山|石川|福井|山梨|長野|岐阜|静岡|愛知|三重|滋賀|兵庫|奈良|和歌山|鳥取|島根|岡山|広島|山口|徳島|香川|愛媛|高知|福岡|佐賀|長崎|熊本|大分|宮崎|鹿児島|沖縄)県';
+  function findContacts(s) {
+    var out = [], re, m;
+    function put(kind, ns, ne) { if (ne > ns) out.push({ kind: kind, s: ns, e: ne, t: s.slice(ns, ne) }); }
+    re = /(?:https?:\/{1,2}|www\.)[^\s　「」『』【】（）()<>]+/gi;
+    while ((m = re.exec(s))) put('url', m.index, m.index + m[0].replace(/[.,;:!?)\]、。]+$/, '').length);
+    re = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+    while ((m = re.exec(s))) put('email', m.index, m.index + m[0].length);
+    re = new RegExp('[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)*\\.' + TLD + '(?:/[^\\s　「」『』【】（）()<>、。]*)?(?![A-Za-z0-9-])', 'gi');
+    while ((m = re.exec(s))) {
+      if (/[A-Za-z0-9@._\/-]/.test(s.charAt(m.index - 1) || ' ')) continue;
+      put('url', m.index, m.index + m[0].replace(/[.,;:!?)\]]+$/, '').length);
+    }
+    re = /\+81[- ]?\d{1,4}[- ]?\d{1,4}[- ]?\d{3,4}/g;
+    while ((m = re.exec(s))) put('phone', m.index, m.index + m[0].length);
+    re = /\(?0\d{1,4}\)?[- ]{0,3}\(?\d{1,4}\)?[- ]{0,3}\d{3,4}/g;
+    while ((m = re.exec(s))) {
+      var d2 = digitsOf(m[0]), prev = s.charAt(m.index - 1), nxt = s.charAt(m.index + m[0].length);
+      if (d2.length < 10 || d2.length > 11 || isDigit(prev) || isDigit(nxt)) continue;
+      put('phone', m.index, m.index + m[0].length);
+    }
+    re = new RegExp('(?:' + PREFS + ')[一-龯々ヶケァ-ヺー0-9\\-の之ノが番地号丁目 ]{2,40}', 'g');
+    while ((m = re.exec(s))) put('address', m.index, m.index + m[0].replace(/[ ]+$/, '').length);
+    return out;
+  }
+  function phoneKey(t) { var d = digitsOf(nf(t)); return d.indexOf('81') === 0 && d.length >= 11 && /^\+/.test(nf(t).trim()) ? '0' + d.slice(2) : d; }
+  function urlKey(t) { return nf(t).trim().toLowerCase().replace(/^https?:\/{1,2}/, '').replace(/^www\./, '').replace(/\/+$/, ''); }
+  /* 住所: 丁目・番地・号をハイフンにそろえ、最初の「数字とハイフンの並び」までを比べる（建物名・階は見ない） */
+  function addrKey(t) {
+    /* 数字と数字の間の空白（「1-2-3 3階」）は区切りとして残し、ほかの空白は詰める */
+    var u = nf(t).trim().replace(/(\d)\s+(?=\d)/g, '$1|').replace(/\s/g, '');
+    u = u.replace(/[ー−‐‑‒–—―─━﹣]/g, '-').replace(/(\d+)丁目/g, '$1-').replace(/(\d+)番地?/g, '$1-').replace(/(\d+)号/g, '$1');
+    var m = /^(.*?\d+(?:-\d+)*)/.exec(u);
+    return (m ? m[1] : u).replace(/-+$/, '');
+  }
+
+  /* ---- 時刻の取り出し ---- */
+  var TIME_RE = /(?:(午前|午後)\s?)?(\d{1,2})(?:\s?:\s?(\d{2})(?!\d)|\s?時(?!間)(?:\s?(\d{1,2})\s?分|(半))?)/g;
+  function findTimes(s) {
+    var out = [], m;
+    TIME_RE.lastIndex = 0;
+    while ((m = TIME_RE.exec(s))) {
+      var p = s.charAt(m.index - 1);
+      if (isDigit(p) || p === '/' || p === '.' || p === ':') continue;
+      var h = +m[2], mi = m[3] ? +m[3] : m[4] ? +m[4] : m[5] ? 30 : 0;
+      if (m[3] && s.charAt(m.index + m[0].length) === ':') continue;
+      if (h > 29 || mi > 59) continue;
+      if (m[1] === '午後' && h < 12) h += 12;
+      if (m[1] === '午前' && h === 12) h = 0;
+      out.push({ s: m.index, e: m.index + m[0].length, min: h * 60 + mi, ampm: m[1] || '', jifun: !m[3] });
+    }
+    return out;
+  }
+  function lineStart(s, i) { var k = s.lastIndexOf('\n', i - 1); return k + 1; }
+  function lineEnd(s, i) { var k = s.indexOf('\n', i); return k < 0 ? s.length : k; }
+
+  /* ---- 照らし合わせ ---- */
+  function check(text, shop) {
+    text = String(text || '').slice(0, MAX);
+    var N = normalize(text), s = N.s, items = [], taken = [];
+    function overlaps(a, b) { return taken.some(function (r) { return a < r[1] && b > r[0]; }); }
+    function add(kind, status, ns, ne, reg, note) {
+      if (ne <= ns || overlaps(ns, ne)) return false;
+      taken.push([ns, ne]);
+      var start = N.a[ns], end = N.b[ne - 1];
+      items.push({ kind: kind, status: status, start: start, end: end, found: text.slice(start, end), reg: reg || '', note: note || '',
+        line: text.slice(0, start).split('\n').length });
+      return true;
+    }
+    /* 連絡先 */
+    var contacts = findContacts(s), mask = s.split('');
+    var phones = shop.phones.filter(function (x) { return x.trim(); }), urls = shop.urls.filter(function (x) { return x.trim(); });
+    contacts.sort(function (x, y) { return x.s - y.s || (y.e - y.s) - (x.e - x.s); });
+    contacts.forEach(function (c) {
+      for (var i = c.s; i < c.e; i++) mask[i] = ' ';
+      if (c.kind === 'phone') {
+        if (!phones.length) add('phone', 'none', c.s, c.e, '', '電話番号は登録されていません');
+        else if (phones.some(function (p) { return phoneKey(p) === phoneKey(c.t); })) add('phone', 'same', c.s, c.e, phones.join('／'), '');
+        else add('phone', 'diff', c.s, c.e, phones.join('／'), '登録の電話番号と数字が違います');
+      } else if (c.kind === 'email') {
+        if (!shop.email.trim()) add('email', 'none', c.s, c.e, '', 'メールは登録されていません');
+        else if (nf(shop.email).trim().toLowerCase() === c.t.toLowerCase()) add('email', 'same', c.s, c.e, shop.email.trim(), '');
+        else add('email', 'diff', c.s, c.e, shop.email.trim(), '登録のメールと違います');
+      } else if (c.kind === 'url') {
+        if (!urls.length) add('url', 'none', c.s, c.e, '', 'URLは登録されていません');
+        else if (urls.some(function (u) { return urlKey(u) === urlKey(c.t); })) add('url', 'same', c.s, c.e, urls.join('／'), '');
+        else add('url', 'diff', c.s, c.e, urls.join('／'), '登録のURLと違います');
+      } else if (c.kind === 'address') {
+        if (!shop.address.trim()) add('address', 'none', c.s, c.e, '', '住所は登録されていません');
+        else if (addrKey(shop.address) === addrKey(c.t)) add('address', 'same', c.s, c.e, shop.address.trim(), '建物名・階は見ていません');
+        else add('address', 'diff', c.s, c.e, shop.address.trim(), '番地までを比べました（建物名・階は見ていません）');
+      }
+    });
+    var s2 = mask.join('');
+
+    /* やっていないこと（肯定・否定は判断しない） */
+    shop.nots.forEach(function (x) {
+      var w = nf(x.word).trim(); if (!w) return;
+      var low = s2.toLowerCase(), wl = w.toLowerCase(), i = 0, k;
+      while ((k = low.indexOf(wl, i)) >= 0) {
+        add('not', 'check', k, k + wl.length, x.note.trim() || ('「' + x.word.trim() + '」はやっていない'),
+          '登録では「' + (x.note.trim() || x.word.trim() + 'なし') + '」です。文の書き方を確認してください');
+        i = k + wl.length;
+      }
+    });
+
+    /* 休み・営業日の言い方 */
+    var cw = closedWeekdays(shop), anyHours = DAYS.some(function (d) { return dayState(shop, d).kind !== 'unreg'; });
+    var reF = /不定休/g, m;
+    while ((m = reF.exec(s2))) add('day', 'none', m.index, m.index + m[0].length, hoursSummary(shop), '登録は曜日で決まった休みです。不定休かどうかは照らし合わせられません');
+    var reNo = /年中無休|無休|毎日営業|休まず営業|365日営業/g;
+    while ((m = reNo.exec(s2))) {
+      if (!anyHours) { add('day', 'none', m.index, m.index + m[0].length, '', '営業時間・休みが登録されていません'); continue; }
+      if (cw.length) add('day', 'diff', m.index, m.index + m[0].length, '休み: ' + joinDays(cw), '登録では ' + joinDays(cw) + ' が休みです');
+      else add('day', 'same', m.index, m.index + m[0].length, hoursSummary(shop), '');
+    }
+    function judgeClosed(ns, ne, days, strict) {
+      if (!days.length) return;
+      var opens = days.filter(function (d) { return dayState(shop, d).kind === 'open'; });
+      var unreg = days.filter(function (d) { return dayState(shop, d).kind === 'unreg'; });
+      var reg = cw.length ? '休み: ' + joinDays(cw) : hoursSummary(shop);
+      if (opens.length) {
+        var st = dayState(shop, opens[0]);
+        add('day', 'diff', ns, ne, reg, '文では ' + joinDays(days) + ' が休み。登録では ' + joinDays(opens) + ' は営業日です（' + fmt(st.o) + '〜' + fmt(st.c) + 'など）');
+      } else if (unreg.length === days.length) add('day', 'none', ns, ne, reg, joinDays(unreg) + ' の営業時間・休みは登録されていません');
+      else if (strict && cw.some(function (d) { return days.indexOf(d) < 0; })) {
+        add('day', 'diff', ns, ne, reg, '登録ではほかに ' + joinDays(cw.filter(function (d) { return days.indexOf(d) < 0; })) + ' も休みです');
+      } else add('day', 'same', ns, ne, reg, '');
+    }
+    var reC2 = new RegExp('定休日?\\s?(?:は|:)?\\s?(' + DAYLIST + ')', 'g');
+    while ((m = reC2.exec(s2))) { if (s2.charAt(m.index - 1) === '不') continue; judgeClosed(m.index, m.index + m[0].length, daysIn(m[1]), true); }
+    var reC1 = new RegExp('(' + DAYLIST + ')\\s?(?:は|が|も)?\\s?(?:定休日?|お休み|休み|休業日?|休館日?|休店)', 'g');
+    while ((m = reC1.exec(s2))) { if (isDigit(s2.charAt(m.index - 1))) continue; judgeClosed(m.index, m.index + m[0].length, daysIn(m[1]), false); }
+    var reO = new RegExp('(' + DAYLIST + ')\\s?(?:も|は)?\\s?(?:通常)?(?:営業(?!時間)|開いて|オープン(?!時))', 'g');
+    while ((m = reO.exec(s2))) {
+      if (isDigit(s2.charAt(m.index - 1))) continue;
+      var ds = daysIn(m[1]), cl = ds.filter(function (d) { return dayState(shop, d).kind === 'closed'; });
+      var un = ds.filter(function (d) { return dayState(shop, d).kind === 'unreg'; });
+      if (cl.length) add('day', 'diff', m.index, m.index + m[0].length, '休み: ' + joinDays(cw.length ? cw : cl), '登録では ' + joinDays(cl) + ' は休みです');
+      else if (un.length === ds.length) add('day', 'none', m.index, m.index + m[0].length, '', joinDays(un) + ' の営業時間は登録されていません');
+      else add('day', 'same', m.index, m.index + m[0].length, hoursSummary(shop), '');
+    }
+
+    /* 営業時間（範囲）と、手がかりのある単独の時刻 */
+    var times = findTimes(s2).filter(function (t) { return !overlaps(t.s, t.e); });
+    var ranges = [], used = {};
+    for (var i = 0; i < times.length; i++) {
+      var t1 = times[i], t2 = times[i + 1];
+      if (t2 && /^\s?(?:~|〜|-|から|より)\s?$/.test(s2.slice(t1.e, t2.s))) {
+        var e = t2.e, after = /^\s?まで/.exec(s2.slice(e)); if (after) e += after[0].length;
+        ranges.push({ s: t1.s, e: e, o: t1.min, c: t2.min }); used[i] = used[i + 1] = 1; i++;
+      }
+    }
+    /* 「10〜19時」のように前の時刻に「時」がない形 */
+    times.forEach(function (t, k) {
+      if (used[k] || !t.jifun || t.ampm) return;
+      var from = Math.max(0, t.s - 8), seg = s2.slice(from, t.s), bm = /(\d{1,2})\s?(?:~|〜|-)\s?$/.exec(seg);
+      if (!bm) return;
+      var bs = from + bm.index, p = s2.charAt(bs - 1);
+      if (isDigit(p) || p === ':' || p === '-' || +bm[1] > 29) return;
+      ranges.push({ s: bs, e: t.e, o: +bm[1] * 60, c: t.min }); used[k] = 1;
+    });
+    ranges.sort(function (x, y) { return x.s - y.s; });
+    var marks = ranges.map(function (r) { return [r.s, r.e]; }).concat(times.filter(function (t, k) { return !used[k]; }).map(function (t) { return [t.s, t.e]; }))
+      .sort(function (x, y) { return x[0] - y[0]; });
+    /* 時刻の前（同じ行・直前の時刻より後）にある曜日の言い方。なければ直後の括弧書き。word=文の言い方 */
+    var ctxWord = '';
+    function ctxDays(ns, ne) {
+      var from = lineStart(s2, ns);
+      marks.forEach(function (mk) { if (mk[1] <= ns && mk[1] > from) from = mk[1]; });
+      var before = findDays(s2, from, ns);
+      if (before.length) { var x = before[before.length - 1]; ctxWord = s2.slice(x.s, x.e); return x.days; }
+      var paren = new RegExp('^\\s?[（(]\\s?(' + DAYLIST + ')').exec(s2.slice(ne, lineEnd(s2, ne)));
+      ctxWord = paren ? paren[1] : '';
+      return paren ? daysIn(paren[1]) : [];
+    }
+    ranges.forEach(function (r) {
+      var D = ctxDays(r.s, r.e), said = '文では ' + (D.length ? ctxWord + ' ' : '') + fmt(r.o) + '〜' + fmt(r.c) + '。';
+      if (!anyHours) { add('hours', 'none', r.s, r.e, '', '営業時間は登録されていません'); return; }
+      if (D.length) {
+        var st = D.map(function (d) { return { d: d, st: dayState(shop, d) }; });
+        var opens = st.filter(function (x) { return x.st.kind === 'open'; });
+        var closedAll = st.every(function (x) { return x.st.kind === 'closed'; });
+        if (closedAll) { add('hours', 'diff', r.s, r.e, hoursSummary(shop), said + '登録では ' + joinDays(D) + ' は休みです'); return; }
+        if (!opens.length) { add('hours', 'none', r.s, r.e, hoursSummary(shop), joinDays(D) + ' の営業時間は登録されていません'); return; }
+        var bad = opens.filter(function (x) { return x.st.o !== r.o || x.st.c !== r.c; });
+        if (bad.length) add('hours', 'diff', r.s, r.e, hoursSummary(shop), said + '登録は ' + groupHours(bad) + ' です');
+        else add('hours', 'same', r.s, r.e, joinDays(opens.map(function (x) { return x.d; })) + ' ' + fmt(r.o) + '〜' + fmt(r.c), '');
+      } else {
+        var hit = DAYS.filter(function (d) { var x = dayState(shop, d); return x.kind === 'open' && x.o === r.o && x.c === r.c; });
+        if (hit.length) add('hours', 'same', r.s, r.e, joinDays(hit) + ' ' + fmt(r.o) + '〜' + fmt(r.c), '');
+        else add('hours', 'diff', r.s, r.e, hoursSummary(shop), said + 'どの曜日の登録とも合いません');
+      }
+    });
+    var lo = parseTime(shop.lastOrder);
+    times.forEach(function (t, k) {
+      if (used[k] || overlaps(t.s, t.e)) return;
+      var before = s2.slice(Math.max(0, t.s - 8), t.s), after = s2.slice(t.e, t.e + 6), around = before + '|' + after, field = null;
+      if (/受付|ラストオーダー|L\.?O/i.test(around)) field = 'lo';
+      else if (/^\s?(?:に|から)?\s?(?:開店|オープン|open|営業開始)/i.test(after) || /(?:開店|オープン|open|営業開始)\s?(?:は|:)?\s?$/i.test(before)) field = 'o';
+      else if (/^\s?(?:に|で)?\s?(?:閉店|close|クローズ|まで|終了)/i.test(after) || /(?:閉店|close|クローズ)\s?(?:は|:)?\s?$/i.test(before)) field = 'c';
+      if (!field) return;
+      if (field === 'lo') {
+        if (lo === null) add('time', 'none', t.s, t.e, '', '受付終了の時刻は登録されていません');
+        else if (lo === t.min) add('time', 'same', t.s, t.e, '受付終了 ' + fmt(lo), '');
+        else add('time', 'diff', t.s, t.e, '受付終了 ' + fmt(lo), '文では ' + fmt(t.min) + '。登録の受付終了は ' + fmt(lo) + ' です');
+        return;
+      }
+      var name = field === 'o' ? '開始' : '終了', D = ctxDays(t.s, t.e);
+      var pool = (D.length ? D : DAYS).filter(function (d) { return dayState(shop, d).kind === 'open'; });
+      if (!pool.length) { add('time', 'none', t.s, t.e, hoursSummary(shop), '比べられる営業時間の登録がありません'); return; }
+      var hit = pool.filter(function (d) { var x = dayState(shop, d); return (field === 'o' ? x.o : x.c) === t.min; });
+      if (hit.length === pool.length || (!D.length && hit.length)) add('time', 'same', t.s, t.e, joinDays(hit) + ' の' + name + ' ' + fmt(t.min), '');
+      else add('time', 'diff', t.s, t.e, hoursSummary(shop), '文では' + (D.length ? ' ' + ctxWord + ' の' : '') + name + ' ' + fmt(t.min) + '。登録の' + name + 'と合いません');
+    });
+
+    /* 料金 */
+    var menu = [];
+    shop.menu.forEach(function (x) {
+      var p = parsePrice(x.price); if (p === null) return;
+      [x.name].concat(x.alias.split(/[、,，]/)).forEach(function (nm) { nm = nf(nm).trim(); if (nm) menu.push({ name: nm, label: x.name.trim() || nm, price: p }); });
+    });
+    menu.sort(function (a, b) { return b.name.length - a.name.length; });
+    var amounts = [], reA = /(?:¥\s?(\d{1,3}(?:,\d{3})+|\d+)|(\d{1,3}(?:,\d{3})+|\d+)\s?円)/g;
+    while ((m = reA.exec(s2))) {
+      var raw = m[1] || m[2], aft = s2.slice(m.index + m[0].length, m.index + m[0].length + 4), bef = s2.slice(Math.max(0, m.index - 4), m.index);
+      if (isDigit(s2.charAt(m.index - 1))) continue;
+      if (/^\s?(?:引|割|OFF|off|オフ|分|相当)/.test(aft) || /送料/.test(bef)) continue;
+      amounts.push({ s: m.index, e: m.index + m[0].length, v: +raw.replace(/,/g, ''), used: false });
+    }
+    var hits = [], hitTaken = [];
+    menu.forEach(function (x) {
+      var i = 0, k;
+      while ((k = s2.indexOf(x.name, i)) >= 0) {
+        var e2 = k + x.name.length;
+        if (!hitTaken.some(function (r) { return k < r[1] && e2 > r[0]; })) { hits.push({ s: k, e: e2, x: x }); hitTaken.push([k, e2]); }
+        i = e2;
+      }
+    });
+    hits.sort(function (a, b) { return a.s - b.s; });
+    hits.forEach(function (h, idx) {
+      var next = hits[idx + 1], stop = s2.slice(h.e).search(/[。\n]/), lim = stop < 0 ? s2.length : h.e + stop;
+      if (next && next.s < lim) lim = next.s;
+      var a = amounts.filter(function (z) { return !z.used && z.s >= h.e && z.s < lim; })[0];
+      if (!a) return;
+      a.used = true;
+      var reg = h.x.label + ' ' + yen(h.x.price) + '（税込）';
+      if (a.v === h.x.price) { add('price', 'same', a.s, a.e, reg, ''); return; }
+      var ex = h.x.price / 1.1, near = s2.slice(a.e, a.e + 6), taxed = /税込|込み/.test(near);
+      var looksEx = !taxed && [Math.round(ex), Math.floor(ex), Math.ceil(ex)].indexOf(a.v) >= 0;
+      add('price', 'diff', a.s, a.e, reg, '文では ' + h.x.label + ' が ' + yen(a.v) + '。' + (looksEx ? '税抜の額かもしれません' : '登録の金額と違います'));
+    });
+    if (menu.length) amounts.forEach(function (a) {
+      if (a.used) return;
+      if (menu.some(function (x) { return x.price === a.v; })) return;
+      add('price', 'none', a.s, a.e, '', 'メニューと結び付けられない金額で、登録のどの料金とも一致しません');
+    });
+
+    items.sort(function (x, y) { return x.start - y.start; });
+    var counts = { diff: 0, same: 0, none: 0, check: 0 };
+    items.forEach(function (it, i) { it.no = i + 1; counts[it.status]++; });
+    return { items: items, counts: counts };
+  }
+  function segment(text, items) {
+    var segs = [], pos = 0;
+    items.forEach(function (it) {
+      if (it.start > pos) segs.push({ t: text.slice(pos, it.start) });
+      segs.push({ t: text.slice(it.start, it.end), item: it });
+      pos = it.end;
+    });
+    if (pos < text.length) segs.push({ t: text.slice(pos) });
+    return segs;
+  }
+
+  var SAMPLE_SHOP = {
+    name: 'ヘアサロン みほん',
+    hours: {
+      mon: { closed: false, open: '10:00', close: '19:00' }, tue: { closed: true, open: '', close: '' },
+      wed: { closed: false, open: '10:00', close: '19:00' }, thu: { closed: false, open: '10:00', close: '19:00' },
+      fri: { closed: false, open: '10:00', close: '19:00' }, sat: { closed: false, open: '10:00', close: '17:00' },
+      sun: { closed: false, open: '10:00', close: '17:00' }, hol: { closed: false, open: '10:00', close: '17:00' }
+    },
+    lastOrder: '', address: '東京都架空区見本町1-2-3', phones: ['03-0000-0012', ''], email: 'info@example.com', urls: ['', ''],
+    menu: [{ name: 'カット', alias: '', price: '4950' }, { name: 'カラー', alias: '', price: '7700' }, { name: 'カット＋カラー', alias: 'カットとカラー', price: '11000' }],
+    nots: [{ word: '駐車場', note: '駐車場なし（近くにコインパーキング）' }], updated: ''
+  };
+  var SAMPLE_TEXT = 'ヘアサロン みほんより、秋のご案内です\n営業時間は平日10時〜20時、土日祝は10時〜17時です\n定休日は水曜日となります\n人気のカットは4,500円、カラーは7,700円でご用意しています\n駐車場もございますので、お車でもお気軽にどうぞ\nご予約はお電話で 03-0000-0021 まで';
+
+  return { MAX: MAX, DAYS: DAYS, DLAB: DLAB, KIND: KIND, STATUS: STATUS, normalize: normalize, parseTime: parseTime, fmt: fmt, parsePrice: parsePrice,
+    blankShop: blankShop, sanitize: sanitize, exportText: exportText, importText: importText, isEmpty: isEmpty, hoursSummary: hoursSummary,
+    expandSeq: expandSeq, findTimes: findTimes, addrKey: addrKey, check: check, segment: segment, SAMPLE_SHOP: SAMPLE_SHOP, SAMPLE_TEXT: SAMPLE_TEXT };
+})();
+if (typeof module !== 'undefined') module.exports = SF;
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var KEY = 'mw-day079-shop';
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function clear(e) { while (e.firstChild) e.removeChild(e.firstChild); }
+  function today() { var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
+
+  var storageOK = true, shop = SF.blankShop(), saveTimer = null, checkTimer = null;
+  try { var raw = localStorage.getItem(KEY); if (raw) { var r = SF.importText(raw); if (r.shop) shop = r.shop; } }
+  catch (e) { storageOK = false; }
+  function save() {
+    shop.updated = today();
+    $('updated').textContent = '最後に直した日: ' + shop.updated;
+    if (!storageOK) return;
+    try { localStorage.setItem(KEY, SF.exportText(shop)); $('storemsg').textContent = ''; }
+    catch (e) { storageOK = false; showStoreMsg(); }
+  }
+  function showStoreMsg() { $('storemsg').textContent = storageOK ? '' : 'この端末（ブラウザの設定）では登録を残せません。ページを開いている間だけ使えます。'; }
+  function changed() { clearTimeout(saveTimer); saveTimer = setTimeout(save, 300); scheduleCheck(); }
+
+  /* ---- タブ ---- */
+  function showTab(name) {
+    var isShop = name === 'shop';
+    $('tab-shop').setAttribute('aria-selected', isShop ? 'true' : 'false');
+    $('tab-check').setAttribute('aria-selected', isShop ? 'false' : 'true');
+    $('pane-shop').hidden = !isShop; $('pane-check').hidden = isShop;
+    if (!isShop) runCheck();
+  }
+  $('tab-shop').addEventListener('click', function () { showTab('shop'); });
+  $('tab-check').addEventListener('click', function () { showTab('check'); });
+  $('gocheck').addEventListener('click', function () { showTab('check'); window.scrollTo(0, 0); });
+  $('goshop').addEventListener('click', function () { showTab('shop'); });
+
+  /* ---- ① 登録フォーム ---- */
+  function bindText(id, get, set) {
+    var e = $(id); e.value = get();
+    e.oninput = function () { set(e.value); changed(); };
+  }
+  function renderHours() {
+    var box = $('hours'); clear(box);
+    SF.DAYS.forEach(function (d) {
+      var h = shop.hours[d], lab = SF.DLAB[d];
+      var dl = el('span', 'd', lab); dl.id = 'hd-' + d; box.appendChild(dl);
+      var o = el('input'); o.type = 'text'; o.inputMode = 'numeric'; o.maxLength = 10; o.value = h.open; o.placeholder = '開始'; o.autocomplete = 'off';
+      o.setAttribute('aria-label', lab + (d === 'hol' ? '日' : '曜') + 'の開始');
+      var c = el('input'); c.type = 'text'; c.inputMode = 'numeric'; c.maxLength = 10; c.value = h.close; c.placeholder = '終了'; c.autocomplete = 'off';
+      c.setAttribute('aria-label', lab + (d === 'hol' ? '日' : '曜') + 'の終了');
+      var lb = el('label', 'chk' + (h.closed ? ' on' : '')), cb = el('input'); cb.type = 'checkbox'; cb.checked = h.closed;
+      cb.setAttribute('aria-label', lab + (d === 'hol' ? '日' : '曜') + 'は休み');
+      lb.appendChild(cb); lb.appendChild(document.createTextNode('休み'));
+      o.disabled = c.disabled = h.closed;
+      o.oninput = function () { h.open = o.value; changed(); };
+      c.oninput = function () { h.close = c.value; changed(); };
+      [o, c].forEach(function (inp) { inp.onblur = function () { var t = SF.parseTime(inp.value); if (t !== null) { inp.value = SF.fmt(t); inp.oninput(); } }; });
+      cb.onchange = function () { h.closed = cb.checked; o.disabled = c.disabled = cb.checked; lb.className = 'chk' + (cb.checked ? ' on' : ''); changed(); };
+      box.appendChild(o); box.appendChild(el('span', 't', '〜')); box.appendChild(c); box.appendChild(lb);
+    });
+  }
+  function renderMenu() {
+    var ul = $('menu'); clear(ul);
+    shop.menu.forEach(function (x, i) {
+      var li = el('li');
+      var n = el('input', 'n'); n.type = 'text'; n.maxLength = 60; n.value = x.name; n.placeholder = 'メニュー名'; n.setAttribute('aria-label', (i + 1) + '行目のメニュー名'); n.autocomplete = 'off';
+      var p = el('input', 'p'); p.type = 'text'; p.inputMode = 'numeric'; p.maxLength = 20; p.value = x.price; p.placeholder = '金額'; p.setAttribute('aria-label', (i + 1) + '行目の金額（税込・円）'); p.autocomplete = 'off';
+      var a = el('input', 'a'); a.type = 'text'; a.maxLength = 200; a.value = x.alias; a.placeholder = '別の書き方（任意・「、」区切り）'; a.setAttribute('aria-label', (i + 1) + '行目のメニューの別の書き方'); a.autocomplete = 'off';
+      var del = el('button', 'del', '×'); del.type = 'button'; del.setAttribute('aria-label', (i + 1) + '行目のメニューを消す');
+      n.oninput = function () { x.name = n.value; changed(); };
+      p.oninput = function () { x.price = p.value; changed(); };
+      p.onblur = function () { var v = SF.parsePrice(p.value); if (v !== null) { p.value = String(v); x.price = p.value; changed(); } };
+      a.oninput = function () { x.alias = a.value; changed(); };
+      del.onclick = function () { shop.menu.splice(i, 1); renderMenu(); changed(); };
+      li.appendChild(n); li.appendChild(p); li.appendChild(del); li.appendChild(a); ul.appendChild(li);
+    });
+    $('addmenu').disabled = shop.menu.length >= 30;
+  }
+  function renderNots() {
+    var ul = $('nots'); clear(ul);
+    shop.nots.forEach(function (x, i) {
+      var li = el('li');
+      var w = el('input'); w.type = 'text'; w.maxLength = 40; w.value = x.word; w.placeholder = '言葉（例: 駐車場）'; w.setAttribute('aria-label', (i + 1) + '行目の言葉'); w.autocomplete = 'off';
+      var nt = el('input'); nt.type = 'text'; nt.maxLength = 80; nt.value = x.note; nt.placeholder = '本当は（例: 駐車場なし）'; nt.setAttribute('aria-label', (i + 1) + '行目の本当のこと'); nt.autocomplete = 'off';
+      var del = el('button', 'del', '×'); del.type = 'button'; del.setAttribute('aria-label', (i + 1) + '行目を消す');
+      w.oninput = function () { x.word = w.value; changed(); };
+      nt.oninput = function () { x.note = nt.value; changed(); };
+      del.onclick = function () { shop.nots.splice(i, 1); renderNots(); changed(); };
+      li.appendChild(w); li.appendChild(nt); li.appendChild(del); ul.appendChild(li);
+    });
+    $('addnot').disabled = shop.nots.length >= 10;
+  }
+  function renderShop() {
+    bindText('shopname', function () { return shop.name; }, function (v) { shop.name = v; });
+    bindText('lastorder', function () { return shop.lastOrder; }, function (v) { shop.lastOrder = v; });
+    bindText('address', function () { return shop.address; }, function (v) { shop.address = v; });
+    bindText('phone0', function () { return shop.phones[0]; }, function (v) { shop.phones[0] = v; });
+    bindText('phone1', function () { return shop.phones[1]; }, function (v) { shop.phones[1] = v; });
+    bindText('email', function () { return shop.email; }, function (v) { shop.email = v; });
+    bindText('url0', function () { return shop.urls[0]; }, function (v) { shop.urls[0] = v; });
+    bindText('url1', function () { return shop.urls[1]; }, function (v) { shop.urls[1] = v; });
+    if (!shop.menu.length) shop.menu = [{ name: '', alias: '', price: '' }, { name: '', alias: '', price: '' }, { name: '', alias: '', price: '' }];
+    if (!shop.nots.length) shop.nots = [{ word: '', note: '' }];
+    renderHours(); renderMenu(); renderNots();
+    $('updated').textContent = shop.updated ? '最後に直した日: ' + shop.updated : 'まだ登録していません';
+    showStoreMsg();
+  }
+  $('weekday').addEventListener('click', function () {
+    var m = shop.hours.mon;
+    ['tue', 'wed', 'thu', 'fri'].forEach(function (d) { shop.hours[d] = { closed: m.closed, open: m.open, close: m.close }; });
+    renderHours(); changed();
+  });
+  $('addmenu').addEventListener('click', function () { if (shop.menu.length < 30) { shop.menu.push({ name: '', alias: '', price: '' }); renderMenu(); } });
+  $('addnot').addEventListener('click', function () { if (shop.nots.length < 10) { shop.nots.push({ word: '', note: '' }); renderNots(); } });
+  $('sampleshop').addEventListener('click', function () {
+    if (!SF.isEmpty(shop) && !window.confirm('今の登録を消して、例のお店（架空）を入れます。よろしいですか？')) return;
+    shop = SF.sanitize(JSON.parse(JSON.stringify(SF.SAMPLE_SHOP))); renderShop(); save(); scheduleCheck();
+  });
+  $('resetshop').addEventListener('click', function () {
+    if (!window.confirm('この端末に残っているお店の情報を消します。よろしいですか？')) return;
+    shop = SF.blankShop();
+    try { if (storageOK) localStorage.removeItem(KEY); } catch (e) { /* 何もしない */ }
+    renderShop(); $('updated').textContent = 'まだ登録していません'; scheduleCheck();
+  });
+  function copyText(text, msgEl, box) {
+    function fallback() {
+      box.hidden = false; box.value = text; box.focus(); box.select();
+      var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      msgEl.textContent = ok ? 'コピーしました' : '下の文字を選択しました。長押し（パソコンはCtrl+C）でコピーしてください';
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { msgEl.textContent = 'コピーしました。移したい端末でこのページを開き、「貼った文字を読み込む」に貼ってください'; }, fallback);
+    } else fallback();
+  }
+  $('exportbtn').addEventListener('click', function () { copyText(SF.exportText(shop), $('exportmsg'), $('exportbox')); });
+  $('importbtn').addEventListener('click', function () {
+    var r = SF.importText($('importbox').value);
+    if (r.error) { $('importmsg').textContent = r.error; return; }
+    if (!SF.isEmpty(shop) && !window.confirm('今の登録を、貼った文字の内容で置き換えます。よろしいですか？')) return;
+    shop = r.shop; renderShop(); save(); $('importbox').value = ''; $('importmsg').textContent = '読み込みました'; scheduleCheck();
+  });
+
+  /* ---- ② 照らし合わせ ---- */
+  var ai = $('ai');
+  function scheduleCheck() { clearTimeout(checkTimer); checkTimer = setTimeout(runCheck, 150); }
+  function pill(cls, text) { return el('span', 'pill ' + cls, text); }
+  function runCheck() {
+    var empty = SF.isEmpty(shop), text = ai.value;
+    $('gate').hidden = !empty;
+    $('ailen').textContent = text.length.toLocaleString('ja-JP') + ' / 10,000字';
+    var box = $('marked'), sum = $('summary'), list = $('items'); clear(box); clear(sum); clear(list);
+    if (!text) {
+      box.className = 'textview empty'; box.textContent = '文を貼ると、登録と照らし合わせた所に印が付きます。';
+      sum.appendChild(el('p', 'small', 'まだ文がありません。')); return;
+    }
+    if (empty) {
+      box.className = 'textview'; box.textContent = text;
+      sum.appendChild(el('p', 'small', 'お店の情報が登録されていないため、照らし合わせていません。')); return;
+    }
+    var r = SF.check(text, shop), c = r.counts;
+    var row = el('div', 'summary');
+    if (c.diff) row.appendChild(pill('diff', '登録と違う ' + c.diff + 'か所'));
+    if (c.same) row.appendChild(pill('same', '登録と同じ ' + c.same + 'か所'));
+    if (c.check) row.appendChild(pill('check', '確認 ' + c.check + 'か所'));
+    if (c.none) row.appendChild(pill('none', '登録なし ' + c.none + 'か所'));
+    sum.appendChild(row);
+    if (!c.diff) sum.appendChild(el('p', 'zero', '登録した情報とは、食い違いは見つかりませんでした（登録していない事実や誤字は見ていません）。'));
+    if (!r.items.length) sum.appendChild(el('p', 'small', '文の中に、営業時間・休み・料金・連絡先・やっていないことの言葉が見つかりませんでした。'));
+    box.className = 'textview';
+    SF.segment(text, r.items).forEach(function (sg) {
+      if (!sg.item) { box.appendChild(document.createTextNode(sg.t)); return; }
+      var it = sg.item, sp = el('span', 'mk ' + it.status); sp.id = 'mk-' + it.no;
+      sp.appendChild(el('span', 'lb', it.no + ' ' + SF.STATUS[it.status]));
+      sp.appendChild(document.createTextNode(sg.t));
+      box.appendChild(sp);
+    });
+    r.items.forEach(function (it) {
+      var li = el('li'), b = el('button'); b.type = 'button';
+      var hd = el('span', 'hd');
+      hd.appendChild(el('span', 'st ' + it.status, it.no + ' ' + SF.STATUS[it.status]));
+      hd.appendChild(el('span', 'kd', SF.KIND[it.kind]));
+      hd.appendChild(el('span', 'ln', it.line + '行目'));
+      b.appendChild(hd);
+      var r1 = el('span', 'row'); r1.appendChild(el('b', '', '文では')); r1.appendChild(document.createTextNode(it.found)); b.appendChild(r1);
+      if (it.reg) { var r2 = el('span', 'row'); r2.appendChild(el('b', '', '登録は')); r2.appendChild(document.createTextNode(it.reg)); b.appendChild(r2); }
+      if (it.note) b.appendChild(el('span', 'nt', it.note));
+      b.setAttribute('aria-label', it.no + '番 ' + SF.STATUS[it.status] + ' ' + SF.KIND[it.kind] + '。文では ' + it.found + '。' + (it.reg ? '登録は ' + it.reg + '。' : '') + it.note + '。本文の印へ移動');
+      b.addEventListener('click', function () {
+        var mk = $('mk-' + it.no); if (!mk) return;
+        mk.scrollIntoView({ block: 'center' }); mk.classList.add('flash');
+        setTimeout(function () { mk.classList.remove('flash'); }, 1200);
+      });
+      li.appendChild(b); list.appendChild(li);
+    });
+  }
+  ai.addEventListener('input', scheduleCheck);
+  $('sampletext').addEventListener('click', function () {
+    if (ai.value && !window.confirm('貼った文を消して、例文を入れます。よろしいですか？')) return;
+    if (SF.isEmpty(shop)) { shop = SF.sanitize(JSON.parse(JSON.stringify(SF.SAMPLE_SHOP))); renderShop(); save(); }
+    ai.value = SF.SAMPLE_TEXT; runCheck();
+  });
+  $('cleartext').addEventListener('click', function () { ai.value = ''; runCheck(); });
+
+  renderShop();
+  showTab(SF.isEmpty(shop) ? 'shop' : 'check');
+})();
+</script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js"
+        data-cf-beacon='{"token": "b4c9f7e78daf4edb84ef52b88633f649"}'></script>
+</body>
+</html>
