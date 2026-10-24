@@ -115,6 +115,55 @@ eq('S9 empty', [SF.isEmpty(SF.blankShop()), SF.isEmpty(shop())], [true, false]);
 const ok = SF.check('火曜定休、平日10:00〜19:00、カット4,950円', shop());
 eq('S10 counts', ok.counts, { diff: 0, same: 3, none: 0, check: 0 });
 
+// レビュー①の再現入力（2026-10-25）
+const all = t => SF.check(t, shop()).items.map(i => i.status + ':' + i.kind + ':' + i.found);
+// 重大1 括弧の中の定休日を、営業時間の曜日として読まない
+eq('R1 paren teikyu', all('営業時間 10:00〜19:00（火曜定休）'), ['same:hours:10:00〜19:00', 'same:day:火曜定休']);
+eq('R1 paren teikyu ji', all('10時〜19時（火曜定休）'), ['same:hours:10時〜19時', 'same:day:火曜定休']);
+// 重大2 長音で終わるメニュー名
+eq('R2 color space diff', priceOnly('カラー 8,800円'), ['diff:8,800円']);
+eq('R2 color nospace', priceOnly('カラー7,700円'), ['same:7,700円']);
+eq('R2 color space', priceOnly('カラー 7,700円'), ['same:7,700円']);
+eq('R2 combo', priceOnly('カット＋カラー 11,000円'), ['same:11,000円']);
+eq('R2 two menus', priceOnly('カット 4,950円 / カラー 7,700円'), ['same:4,950円', 'same:7,700円']);
+eq('R2 phone choon', SF.check('電話 03ー0000ー0012', shop()).items.map(i => i.status), ['same']);
+// 重大3 全角コロンの後ろの時刻
+eq('R3 colon', hoursOnly('営業時間：10:00〜20:00'), ['diff:10:00〜20:00']);
+eq('R3 colon ji', hoursOnly('営業時間:10時〜20時'), ['diff:10時〜20時']);
+eq('R3 seconds', SF.findTimes('12:10:00').length, 0);
+// 重大4 営業時間でない範囲
+['イベントは14時〜16時です', 'お昼休みは12時〜13時です', 'お電話受付は10時〜18時', '7時〜9時の朝活レッスン', 'ワークショップを13:00〜15:00に開催', '10時〜12時はお昼休み']
+  .forEach((t, i) => eq('R4 not hours ' + i, hoursOnly(t), []));
+eq('R4 phone uketsuke', all('電話 03-0000-0012（受付10時〜18時）'), ['same:phone:03-0000-0012']);
+// 重大5 否定
+eq('R5 not open', dayOnly('火曜日は営業しておりません'), []);
+eq('R5 not closed', dayOnly('水曜日は休みではありません'), []);
+eq('R5 not nenjyu', dayOnly('年中無休ではありません'), []);
+// 重大6 部分一致
+['前髪カット 1,100円', '学生カット 3,300円', '初回カット 3,960円', 'カットとシャンプーで5,500円', 'カラーリタッチ 5,500円']
+  .forEach((t, i) => eq('R6 partial ' + i, priceOnly(t).filter(x => x.startsWith('diff')), []));
+eq('R6 ryokin', priceOnly('カット料金は4,950円'), ['same:4,950円']);
+// 中7 並び
+eq('R7 sorezore', priceOnly('カット・カラーはそれぞれ4,950円、7,700円です').filter(x => x.startsWith('diff')), []);
+eq('R7 list', priceOnly('カット、カラー、パーマ：4,950円／7,700円／9,900円').filter(x => x.startsWith('diff')), []);
+eq('R7 pre', priceOnly('4,950円のカットと7,700円のカラー').filter(x => x.startsWith('diff')), []);
+// 中8 休みの曜日を含むまとまり・第n
+eq('R8 weekday note', SF.check('平日は10時〜19時です', shop()).items[0].note, '登録では 火曜 は休みです（文の「平日」に含まれます）');
+eq('R8 nth', dayOnly('定休日 火曜・第2月曜'), ['none:定休日 火曜']);
+eq('R8 nth2', dayOnly('定休日は火曜日・第3水曜日'), ['none:定休日は火曜日']);
+// 中9 夜・予約の締め切り
+eq('R9 yoru', hoursOnly('営業は朝10時〜夜7時まで'), ['same:朝10時〜夜7時まで']);
+eq('R9 yoyaku', timeOnly('ご予約は18時まで'), []);
+eq('R9 eigyo made', timeOnly('平日は19時まで営業'), []);
+eq('R9 eigyo made2', timeOnly('営業は19時まで'), ['same:19時']);
+// 中10 FAX
+eq('R10 fax', SF.check('TEL: 03-0000-0012 / FAX: 03-0000-0013', shop()).items.map(i => i.status), ['same', 'none']);
+// 中11 税抜の明記
+eq('R11 zeinuki', SF.check('カット 4,500円（税抜）', shop()).items.map(i => i.status), ['check']);
+// 軽12 漢数字の丁目
+eq('R12 kanji chome', contact('東京都架空区見本町一丁目2番3号'), ['same:address']);
+eq('R12 addrKey 21', SF.addrKey('東京都架空区見本町二十一丁目5'), '東京都架空区見本町21-5');
+
 // 時刻・金額の入力の読み方
 eq('parseTime', ['10', '1000', '10:30', '１０：３０', '9時', '25:00', '30:00', 'abc', ''].map(SF.parseTime),
   [600, 600, 630, 630, 540, 1500, null, null, null]);

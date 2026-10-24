@@ -66,9 +66,14 @@
   .rows { list-style: none; margin: 0 0 8px; padding: 0; }
   .rows li { display: grid; gap: 6px; border-top: 1px solid var(--line); padding: 8px 0; }
   .rows li:first-child { border-top: 0; }
-  .rows.menu li { grid-template-columns: minmax(0, 1fr) 6.5em 44px; grid-template-areas: "n p d" "a a a"; }
+  .rows.menu li { grid-template-columns: 7.5em minmax(0, 1fr) 44px; grid-template-areas: "n n d" "p a a"; }
   .rows.menu .n { grid-area: n; } .rows.menu .p { grid-area: p; } .rows.menu .del { grid-area: d; } .rows.menu .a { grid-area: a; }
-  .rows.nots li { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 44px; }
+  .rows.nots li { grid-template-columns: minmax(0, 1fr) 44px; grid-template-areas: "w d" "t t"; }
+  .rows.nots .w { grid-area: w; } .rows.nots .t { grid-area: t; } .rows.nots .del { grid-area: d; }
+  @media (min-width: 640px) {
+    .rows.menu li { grid-template-columns: minmax(0, 1.2fr) 7.5em minmax(0, 1.4fr) 44px; grid-template-areas: "n p a d"; }
+    .rows.nots li { grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) 44px; grid-template-areas: "w t d"; }
+  }
   .rows input { margin: 0; }
   .rows .del { padding: 0; }
   .two { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 10px; }
@@ -86,7 +91,9 @@
     border-radius: 6px; padding: 10px 12px; margin: 0 0 10px; min-height: 3em; line-height: 2.1; }
   .textview.empty { color: var(--ink3); line-height: 1.6; }
   .mk { padding: 1px 2px; border-radius: 3px; box-decoration-break: clone; -webkit-box-decoration-break: clone; text-underline-offset: 4px; text-decoration-thickness: 2px; scroll-margin: 80px; }
-  .mk .lb { display: inline-block; font-size: 11px; font-weight: 800; line-height: 1.35; border-radius: 3px; padding: 0 4px; margin-right: 3px; vertical-align: 2px; text-decoration: none; }
+  .mk { overflow-wrap: anywhere; word-break: break-all; }
+  .mk .head { white-space: nowrap; }
+  .mk .lb { display: inline-block; font-size: 12px; font-weight: 800; line-height: 1.35; border-radius: 3px; padding: 0 4px; margin-right: 3px; vertical-align: 2px; text-decoration: none; }
   .mk.diff { background: var(--diff-soft); text-decoration-line: underline; text-decoration-style: wavy; text-decoration-color: var(--diff); }
   .mk.same { text-decoration-line: underline; text-decoration-style: solid; text-decoration-color: var(--same); }
   .mk.none { text-decoration-line: underline; text-decoration-style: dotted; text-decoration-color: var(--none); }
@@ -123,11 +130,11 @@
 <body>
 <main>
   <h1>AIの文とお店の情報の照らし合わせ</h1>
-  <p class="lead">お店の情報を一度登録しておき、AIに書かせたお知らせなどを貼ると、営業時間・休み・料金・連絡先が登録と違う所に印が付きます。</p>
+  <p class="lead">お店の情報を登録しておき、AIに書かせた文を貼ると、登録と違う所に印が付きます。</p>
   <ul class="notice">
-    <li>見るのは登録した項目（営業時間・休み・料金・連絡先・やっていないこと）だけです。店名の書き間違い・誤字・登録していない事実は見つけられません。</li>
-    <li>食い違いが見つからなくても、正しいとは限りません。最後はご自身の目で確かめてください。</li>
-    <li>お店の情報はこの端末にだけ残ります。貼った文は保存も送信もしません（閲覧数を数えるアクセス解析だけ使っています）。</li>
+    <li>見るのは登録した項目だけです。誤字や登録していない事実は見ません。</li>
+    <li>食い違いがなくても、正しいとは限りません。</li>
+    <li>お店の情報はこの端末にだけ残ります。貼った文は保存も送信もしません（アクセス解析だけ使っています）。</li>
   </ul>
   <div class="tabs" role="tablist" aria-label="画面の切り替え">
     <button type="button" role="tab" id="tab-shop" aria-controls="pane-shop" aria-selected="false">① お店の情報</button>
@@ -208,6 +215,7 @@
             <button type="button" id="sampletext">例文を入れる</button>
             <button type="button" id="cleartext">消す</button>
           </div>
+          <p class="msg" id="samplemsg" role="status"></p>
           <p class="small" id="ailen">0 / 10,000字</p>
           <h3>印をつけた文</h3>
           <div class="textview empty" id="marked">文を貼ると、登録と照らし合わせた所に印が付きます。</div>
@@ -251,12 +259,14 @@ var SF = (function () {
       for (var k = 0; k < nf.length; k++) { s.push(nf.charAt(k)); a.push(i); b.push(i + len); }
       i += len;
     }
-    /* 数字のそばの長音・ハイフン類だけを半角ハイフンへ */
+    /* 数字のそばの長音・ハイフン類だけを半角ハイフンへ。
+       長音「ー」は前が数字のときだけ（「カラー 7,700円」の「ー」を巻き込まない） */
     for (var j = 0; j < s.length; j++) {
       if (HY.indexOf(s[j]) < 0) continue;
       var p = j - 1; while (p >= 0 && s[p] === ' ') p--;
       var q = j + 1; while (q < s.length && s[q] === ' ') q++;
-      if ((p >= 0 && isDigit(s[p])) || (q < s.length && isDigit(s[q]))) s[j] = '-';
+      var pd = p >= 0 && isDigit(s[p]), qd = q < s.length && isDigit(s[q]);
+      if (s[j] === 'ー' ? pd : (pd || qd)) s[j] = '-';
     }
     return { s: s.join(''), a: a, b: b };
   }
@@ -407,29 +417,36 @@ var SF = (function () {
     while ((m = re.exec(s))) put('address', m.index, m.index + m[0].replace(/[ ]+$/, '').length);
     return out;
   }
+  /* 丁目の漢数字（一〜九十九） */
+  function kanjiNum(k) {
+    var D = '一二三四五六七八九', i = k.indexOf('十');
+    if (i < 0) return D.indexOf(k) + 1;
+    return (i === 0 ? 1 : D.indexOf(k.charAt(0)) + 1) * 10 + (k.length > i + 1 ? D.indexOf(k.charAt(i + 1)) + 1 : 0);
+  }
   function phoneKey(t) { var d = digitsOf(nf(t)); return d.indexOf('81') === 0 && d.length >= 11 && /^\+/.test(nf(t).trim()) ? '0' + d.slice(2) : d; }
   function urlKey(t) { return nf(t).trim().toLowerCase().replace(/^https?:\/{1,2}/, '').replace(/^www\./, '').replace(/\/+$/, ''); }
   /* 住所: 丁目・番地・号をハイフンにそろえ、最初の「数字とハイフンの並び」までを比べる（建物名・階は見ない） */
   function addrKey(t) {
     /* 数字と数字の間の空白（「1-2-3 3階」）は区切りとして残し、ほかの空白は詰める */
-    var u = nf(t).trim().replace(/(\d)\s+(?=\d)/g, '$1|').replace(/\s/g, '');
+    var u = nf(t).trim().replace(/(\d)\s+(?=\d)/g, '$1|').replace(/\s/g, '').replace(/([一二三四五六七八九十]+)(?=丁目)/g, function (k) { return String(kanjiNum(k)); });
     u = u.replace(/[ー−‐‑‒–—―─━﹣]/g, '-').replace(/(\d+)丁目/g, '$1-').replace(/(\d+)番地?/g, '$1-').replace(/(\d+)号/g, '$1');
     var m = /^(.*?\d+(?:-\d+)*)/.exec(u);
     return (m ? m[1] : u).replace(/-+$/, '');
   }
 
   /* ---- 時刻の取り出し ---- */
-  var TIME_RE = /(?:(午前|午後)\s?)?(\d{1,2})(?:\s?:\s?(\d{2})(?!\d)|\s?時(?!間)(?:\s?(\d{1,2})\s?分|(半))?)/g;
+  var TIME_RE = /(?:(午前|午後|朝|夕方|夜|晩)\s?)?(\d{1,2})(?:\s?:\s?(\d{2})(?!\d)|\s?時(?!間)(?:\s?(\d{1,2})\s?分|(半))?)/g;
   function findTimes(s) {
     var out = [], m;
     TIME_RE.lastIndex = 0;
     while ((m = TIME_RE.exec(s))) {
       var p = s.charAt(m.index - 1);
-      if (isDigit(p) || p === '/' || p === '.' || p === ':') continue;
+      /* 「12:10:00」の後ろ半分は飛ばす。「営業時間：10:00」の「：」は飛ばさない */
+      if (isDigit(p) || p === '/' || p === '.' || (p === ':' && isDigit(s.charAt(m.index - 2)))) continue;
       var h = +m[2], mi = m[3] ? +m[3] : m[4] ? +m[4] : m[5] ? 30 : 0;
       if (m[3] && s.charAt(m.index + m[0].length) === ':') continue;
       if (h > 29 || mi > 59) continue;
-      if (m[1] === '午後' && h < 12) h += 12;
+      if ((m[1] === '午後' || m[1] === '夕方' || m[1] === '夜' || m[1] === '晩') && h < 12) h += 12;
       if (m[1] === '午前' && h === 12) h = 0;
       out.push({ s: m.index, e: m.index + m[0].length, min: h * 60 + mi, ampm: m[1] || '', jifun: !m[3] });
     }
@@ -458,7 +475,8 @@ var SF = (function () {
     contacts.forEach(function (c) {
       for (var i = c.s; i < c.e; i++) mask[i] = ' ';
       if (c.kind === 'phone') {
-        if (!phones.length) add('phone', 'none', c.s, c.e, '', '電話番号は登録されていません');
+        if (/(?:FAX|ファックス|ファクス)\s?(?:番号)?\s?[:：]?\s?$/i.test(s.slice(Math.max(0, c.s - 10), c.s))) add('phone', 'none', c.s, c.e, '', 'FAXの番号は照らし合わせていません');
+        else if (!phones.length) add('phone', 'none', c.s, c.e, '', '電話番号は登録されていません');
         else if (phones.some(function (p) { return phoneKey(p) === phoneKey(c.t); })) add('phone', 'same', c.s, c.e, phones.join('／'), '');
         else add('phone', 'diff', c.s, c.e, phones.join('／'), '登録の電話番号と数字が違います');
       } else if (c.kind === 'email') {
@@ -490,16 +508,22 @@ var SF = (function () {
 
     /* 休み・営業日の言い方 */
     var cw = closedWeekdays(shop), anyHours = DAYS.some(function (d) { return dayState(shop, d).kind !== 'unreg'; });
+    /* 否定の言い方（「営業しておりません」「休みではありません」）は照らし合わせない */
+    function negated(ne) { return /^[^。\n、]{0,8}?(?:ません|ない|ではな|じゃな|せず)/.test(s2.slice(ne, ne + 14)); }
+    /* 「第2月曜」「隔週」は登録の形（曜日固定）と比べられない */
+    function nth(ns, ne) { return /第\s?\d|隔週|毎月/.test(s2.slice(Math.max(0, ns - 4), ne + 8)); }
     var reF = /不定休/g, m;
     while ((m = reF.exec(s2))) add('day', 'none', m.index, m.index + m[0].length, hoursSummary(shop), '登録は曜日で決まった休みです。不定休かどうかは照らし合わせられません');
     var reNo = /年中無休|無休|毎日営業|休まず営業|365日営業/g;
     while ((m = reNo.exec(s2))) {
+      if (negated(m.index + m[0].length)) continue;
       if (!anyHours) { add('day', 'none', m.index, m.index + m[0].length, '', '営業時間・休みが登録されていません'); continue; }
       if (cw.length) add('day', 'diff', m.index, m.index + m[0].length, '休み: ' + joinDays(cw), '登録では ' + joinDays(cw) + ' が休みです');
       else add('day', 'same', m.index, m.index + m[0].length, hoursSummary(shop), '');
     }
     function judgeClosed(ns, ne, days, strict) {
-      if (!days.length) return;
+      if (!days.length || negated(ne)) return;
+      if (nth(ns, ne)) { add('day', 'none', ns, ne, cw.length ? '休み: ' + joinDays(cw) : hoursSummary(shop), '「第○週」「隔週」の休みは照らし合わせられません（登録は曜日で決まった休みだけ）'); return; }
       var opens = days.filter(function (d) { return dayState(shop, d).kind === 'open'; });
       var unreg = days.filter(function (d) { return dayState(shop, d).kind === 'unreg'; });
       var reg = cw.length ? '休み: ' + joinDays(cw) : hoursSummary(shop);
@@ -517,7 +541,7 @@ var SF = (function () {
     while ((m = reC1.exec(s2))) { if (isDigit(s2.charAt(m.index - 1))) continue; judgeClosed(m.index, m.index + m[0].length, daysIn(m[1]), false); }
     var reO = new RegExp('(' + DAYLIST + ')\\s?(?:も|は)?\\s?(?:通常)?(?:営業(?!時間)|開いて|オープン(?!時))', 'g');
     while ((m = reO.exec(s2))) {
-      if (isDigit(s2.charAt(m.index - 1))) continue;
+      if (isDigit(s2.charAt(m.index - 1)) || negated(m.index + m[0].length)) continue;
       var ds = daysIn(m[1]), cl = ds.filter(function (d) { return dayState(shop, d).kind === 'closed'; });
       var un = ds.filter(function (d) { return dayState(shop, d).kind === 'unreg'; });
       if (cl.length) add('day', 'diff', m.index, m.index + m[0].length, '休み: ' + joinDays(cw.length ? cw : cl), '登録では ' + joinDays(cl) + ' は休みです');
@@ -549,17 +573,34 @@ var SF = (function () {
       .sort(function (x, y) { return x[0] - y[0]; });
     /* 時刻の前（同じ行・直前の時刻より後）にある曜日の言い方。なければ直後の括弧書き。word=文の言い方 */
     var ctxWord = '';
-    function ctxDays(ns, ne) {
+    function segFrom(ns) {
       var from = lineStart(s2, ns);
       marks.forEach(function (mk) { if (mk[1] <= ns && mk[1] > from) from = mk[1]; });
-      var before = findDays(s2, from, ns);
+      return from;
+    }
+    function ctxDays(ns, ne) {
+      var before = findDays(s2, segFrom(ns), ns);
       if (before.length) { var x = before[before.length - 1]; ctxWord = s2.slice(x.s, x.e); return x.days; }
-      var paren = new RegExp('^\\s?[（(]\\s?(' + DAYLIST + ')').exec(s2.slice(ne, lineEnd(s2, ne)));
+      /* 直後の括弧書き。ただし「（火曜定休）」のような休みの書き方は曜日の手がかりにしない */
+      var paren = new RegExp('^\\s?[（(]\\s?(' + DAYLIST + ')(?!\\s?(?:は|が|も)?\\s?(?:定休|休))').exec(s2.slice(ne, lineEnd(s2, ne)));
       ctxWord = paren ? paren[1] : '';
       return paren ? daysIn(paren[1]) : [];
     }
+    /* 営業時間ではない時間（受付・休憩・イベントなど）は照らし合わせない */
+    var NOT_HOURS = /受付|休憩|昼休|お昼|イベント|レッスン|ワークショップ|開催|講座|予約|教室|セミナー|配達|配送|電話|朝活|撮影/;
+    function notHours(ns, ne) {
+      return NOT_HOURS.test(s2.slice(segFrom(ns), ns)) || NOT_HOURS.test(s2.slice(ne, Math.min(lineEnd(s2, ne), ne + 12)));
+    }
+    function sentence(ns, ne) {
+      var a = ns; while (a > 0 && !/[。\n！!？?]/.test(s2.charAt(a - 1))) a--;
+      var b = ne; while (b < s2.length && !/[。\n！!？?]/.test(s2.charAt(b))) b++;
+      return s2.slice(a, b);
+    }
     ranges.forEach(function (r) {
+      if (notHours(r.s, r.e)) return;
       var D = ctxDays(r.s, r.e), said = '文では ' + (D.length ? ctxWord + ' ' : '') + fmt(r.o) + '〜' + fmt(r.c) + '。';
+      /* 曜日の指定がない範囲は、同じ文に「営業」「開店」などの手がかりがあるときだけ照らし合わせる */
+      if (!D.length && !/営業|開店|閉店|オープン|open|定休/i.test(sentence(r.s, r.e))) return;
       if (!anyHours) { add('hours', 'none', r.s, r.e, '', '営業時間は登録されていません'); return; }
       if (D.length) {
         var st = D.map(function (d) { return { d: d, st: dayState(shop, d) }; });
@@ -569,7 +610,11 @@ var SF = (function () {
         if (!opens.length) { add('hours', 'none', r.s, r.e, hoursSummary(shop), joinDays(D) + ' の営業時間は登録されていません'); return; }
         var bad = opens.filter(function (x) { return x.st.o !== r.o || x.st.c !== r.c; });
         if (bad.length) add('hours', 'diff', r.s, r.e, hoursSummary(shop), said + '登録は ' + groupHours(bad) + ' です');
-        else add('hours', 'same', r.s, r.e, joinDays(opens.map(function (x) { return x.d; })) + ' ' + fmt(r.o) + '〜' + fmt(r.c), '');
+        else {
+          var off = st.filter(function (x) { return x.st.kind === 'closed'; }).map(function (x) { return x.d; });
+          add('hours', 'same', r.s, r.e, joinDays(opens.map(function (x) { return x.d; })) + ' ' + fmt(r.o) + '〜' + fmt(r.c),
+            off.length ? '登録では ' + joinDays(off) + ' は休みです（文の「' + ctxWord + '」に含まれます）' : '');
+        }
       } else {
         var hit = DAYS.filter(function (d) { var x = dayState(shop, d); return x.kind === 'open' && x.o === r.o && x.c === r.c; });
         if (hit.length) add('hours', 'same', r.s, r.e, joinDays(hit) + ' ' + fmt(r.o) + '〜' + fmt(r.c), '');
@@ -579,10 +624,12 @@ var SF = (function () {
     var lo = parseTime(shop.lastOrder);
     times.forEach(function (t, k) {
       if (used[k] || overlaps(t.s, t.e)) return;
+      if (notHours(t.s, t.e) && !/受付|ラストオーダー|L\.?O/i.test(s2.slice(Math.max(0, t.s - 8), t.e + 6))) return;
       var before = s2.slice(Math.max(0, t.s - 8), t.s), after = s2.slice(t.e, t.e + 6), around = before + '|' + after, field = null;
       if (/受付|ラストオーダー|L\.?O/i.test(around)) field = 'lo';
       else if (/^\s?(?:に|から)?\s?(?:開店|オープン|open|営業開始)/i.test(after) || /(?:開店|オープン|open|営業開始)\s?(?:は|:)?\s?$/i.test(before)) field = 'o';
-      else if (/^\s?(?:に|で)?\s?(?:閉店|close|クローズ|まで|終了)/i.test(after) || /(?:閉店|close|クローズ)\s?(?:は|:)?\s?$/i.test(before)) field = 'c';
+      else if (/^\s?(?:に|で)?\s?(?:閉店|close|クローズ|終了)/i.test(after) || /(?:閉店|close|クローズ)\s?(?:は|:)?\s?$/i.test(before)
+        || (/^\s?まで/.test(after) && /営業/.test(s2.slice(Math.max(0, t.s - 12), t.s)))) field = 'c';
       if (!field) return;
       if (field === 'lo') {
         if (lo === null) add('time', 'none', t.s, t.e, '', '受付終了の時刻は登録されていません');
@@ -610,14 +657,17 @@ var SF = (function () {
       var raw = m[1] || m[2], aft = s2.slice(m.index + m[0].length, m.index + m[0].length + 4), bef = s2.slice(Math.max(0, m.index - 4), m.index);
       if (isDigit(s2.charAt(m.index - 1))) continue;
       if (/^\s?(?:引|割|OFF|off|オフ|分|相当)/.test(aft) || /送料/.test(bef)) continue;
-      amounts.push({ s: m.index, e: m.index + m[0].length, v: +raw.replace(/,/g, ''), used: false });
+      /* 「4,950円のカット」のように名前の前に来る金額は、名前と結び付けない */
+      amounts.push({ s: m.index, e: m.index + m[0].length, v: +raw.replace(/,/g, ''), used: false, pre: s2.charAt(m.index + m[0].length) === 'の' });
     }
     var hits = [], hitTaken = [];
     menu.forEach(function (x) {
       var i = 0, k;
       while ((k = s2.indexOf(x.name, i)) >= 0) {
-        var e2 = k + x.name.length;
-        if (!hitTaken.some(function (r) { return k < r[1] && e2 > r[0]; })) { hits.push({ s: k, e: e2, x: x }); hitTaken.push([k, e2]); }
+        var e2 = k + x.name.length, pv = s2.charAt(k - 1), nx = s2.slice(e2, e2 + 2);
+        /* 別の名前の一部（「学生カット」「カラーリタッチ」）は、そのメニューとして扱わない */
+        var inWord = /[ァ-ヺー一-龯々A-Za-z0-9]/.test(pv) || (/^[ァ-ヺー一-龯々A-Za-z]/.test(nx) && !/^(?:料金|料|代)/.test(nx));
+        if (!inWord && !hitTaken.some(function (r) { return k < r[1] && e2 > r[0]; })) { hits.push({ s: k, e: e2, x: x }); hitTaken.push([k, e2]); }
         i = e2;
       }
     });
@@ -625,13 +675,20 @@ var SF = (function () {
     hits.forEach(function (h, idx) {
       var next = hits[idx + 1], stop = s2.slice(h.e).search(/[。\n]/), lim = stop < 0 ? s2.length : h.e + stop;
       if (next && next.s < lim) lim = next.s;
-      var a = amounts.filter(function (z) { return !z.used && z.s >= h.e && z.s < lim; })[0];
+      /* 名前が並んでいるだけ（「カット・カラーはそれぞれ…」）なら、どの金額か分からないので結び付けない */
+      var prev = hits[idx - 1], SEP = /^\s?[・、,と\/]\s?$/;
+      if ((prev && SEP.test(s2.slice(prev.e, h.s))) || (next && SEP.test(s2.slice(h.e, next.s)))) return;
+      var a = amounts.filter(function (z) { return !z.used && !z.pre && z.s >= h.e && z.s < lim; })[0];
       if (!a) return;
+      var gap = s2.slice(h.e, a.s);
+      /* 「カットとシャンプーで5,500円」: 別の物と合わせた金額は結び付けない */
+      if (/それぞれ/.test(gap) || (/[と・、,+&]/.test(gap) && /[ァ-ヺ一-龯]/.test(gap))) return;
       a.used = true;
       var reg = h.x.label + ' ' + yen(h.x.price) + '（税込）';
       if (a.v === h.x.price) { add('price', 'same', a.s, a.e, reg, ''); return; }
-      var ex = h.x.price / 1.1, near = s2.slice(a.e, a.e + 6), taxed = /税込|込み/.test(near);
+      var ex = h.x.price / 1.1, near = s2.slice(a.e, a.e + 6), taxed = /税込|込み/.test(near), exSaid = /税抜|税別|\+税/.test(near);
       var looksEx = !taxed && [Math.round(ex), Math.floor(ex), Math.ceil(ex)].indexOf(a.v) >= 0;
+      if (exSaid && looksEx) { add('price', 'check', a.s, a.e, reg, '文は税抜の表記で、登録（税込）を税抜にした額と合います。表記をそろえるか確認してください'); return; }
       add('price', 'diff', a.s, a.e, reg, '文では ' + h.x.label + ' が ' + yen(a.v) + '。' + (looksEx ? '税抜の額かもしれません' : '登録の金額と違います'));
     });
     if (menu.length) amounts.forEach(function (a) {
@@ -758,8 +815,8 @@ if (typeof module !== 'undefined') module.exports = SF;
     var ul = $('nots'); clear(ul);
     shop.nots.forEach(function (x, i) {
       var li = el('li');
-      var w = el('input'); w.type = 'text'; w.maxLength = 40; w.value = x.word; w.placeholder = '言葉（例: 駐車場）'; w.setAttribute('aria-label', (i + 1) + '行目の言葉'); w.autocomplete = 'off';
-      var nt = el('input'); nt.type = 'text'; nt.maxLength = 80; nt.value = x.note; nt.placeholder = '本当は（例: 駐車場なし）'; nt.setAttribute('aria-label', (i + 1) + '行目の本当のこと'); nt.autocomplete = 'off';
+      var w = el('input', 'w'); w.type = 'text'; w.maxLength = 40; w.value = x.word; w.placeholder = '言葉（例: 駐車場）'; w.setAttribute('aria-label', (i + 1) + '行目の言葉'); w.autocomplete = 'off';
+      var nt = el('input', 't'); nt.type = 'text'; nt.maxLength = 80; nt.value = x.note; nt.placeholder = '本当は（例: 駐車場なし）'; nt.setAttribute('aria-label', (i + 1) + '行目の本当のこと'); nt.autocomplete = 'off';
       var del = el('button', 'del', '×'); del.type = 'button'; del.setAttribute('aria-label', (i + 1) + '行目を消す');
       w.oninput = function () { x.word = w.value; changed(); };
       nt.oninput = function () { x.note = nt.value; changed(); };
@@ -842,14 +899,18 @@ if (typeof module !== 'undefined') module.exports = SF;
     if (c.check) row.appendChild(pill('check', '確認 ' + c.check + 'か所'));
     if (c.none) row.appendChild(pill('none', '登録なし ' + c.none + 'か所'));
     sum.appendChild(row);
-    if (!c.diff) sum.appendChild(el('p', 'zero', '登録した情報とは、食い違いは見つかりませんでした（登録していない事実や誤字は見ていません）。'));
+    if (!c.diff) sum.appendChild(el('p', 'zero', '登録した情報とは、食い違いは見つかりませんでした（登録していない事実や誤字は見ていません）。' + (c.check ? '「確認」の印が付いた所は、ご自身で見てください。' : '')));
     if (!r.items.length) sum.appendChild(el('p', 'small', '文の中に、営業時間・休み・料金・連絡先・やっていないことの言葉が見つかりませんでした。'));
     box.className = 'textview';
     SF.segment(text, r.items).forEach(function (sg) {
       if (!sg.item) { box.appendChild(document.createTextNode(sg.t)); return; }
       var it = sg.item, sp = el('span', 'mk ' + it.status); sp.id = 'mk-' + it.no;
-      sp.appendChild(el('span', 'lb', it.no + ' ' + SF.STATUS[it.status]));
-      sp.appendChild(document.createTextNode(sg.t));
+      /* ラベルと最初の1文字を折り返さない組にして、ラベルだけが行末に残らないようにする */
+      var first = String.fromCodePoint(sg.t.codePointAt(0)), head = el('span', 'head');
+      head.appendChild(el('span', 'lb', it.no + ' ' + SF.STATUS[it.status]));
+      head.appendChild(document.createTextNode(first));
+      sp.appendChild(head);
+      sp.appendChild(document.createTextNode(sg.t.slice(first.length)));
       box.appendChild(sp);
     });
     r.items.forEach(function (it) {
@@ -874,8 +935,12 @@ if (typeof module !== 'undefined') module.exports = SF;
   ai.addEventListener('input', scheduleCheck);
   $('sampletext').addEventListener('click', function () {
     if (ai.value && !window.confirm('貼った文を消して、例文を入れます。よろしいですか？')) return;
-    if (SF.isEmpty(shop)) { shop = SF.sanitize(JSON.parse(JSON.stringify(SF.SAMPLE_SHOP))); renderShop(); save(); }
-    ai.value = SF.SAMPLE_TEXT; runCheck();
+    var msg = '';
+    if (SF.isEmpty(shop)) {
+      shop = SF.sanitize(JSON.parse(JSON.stringify(SF.SAMPLE_SHOP))); renderShop(); save();
+      msg = '例のお店（架空）を「① お店の情報」に登録しました。ご自分のお店に直すか、「登録を消す」で消せます。';
+    }
+    ai.value = SF.SAMPLE_TEXT; $('samplemsg').textContent = msg; runCheck();
   });
   $('cleartext').addEventListener('click', function () { ai.value = ''; runCheck(); });
 
