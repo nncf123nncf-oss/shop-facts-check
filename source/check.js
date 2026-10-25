@@ -58,8 +58,13 @@ const summary = `[document.getElementById('summary').innerText.replace(/\\n+/g,'
   await b.ev(click('tab-shop')); await b.ev(`(()=>{const c=document.querySelectorAll('#hours input[type=checkbox]')[2];c.checked=true;c.dispatchEvent(new Event('change'))})()`); await b.sleep(300);
   await b.ev(click('tab-check')); await b.ev(setVal('ai', '水曜定休')); await b.sleep(400);
   console.log('toggle-closed', JSON.stringify(await b.ev(summary)));
+  // 開け閉めの欄が「押せる」見た目か（▶の印・枠）。押すと開いて「登録を文字でコピー」が見える
+  await b.ev(click('tab-shop'));
+  // 「登録を文字でコピー」は欄を開かなくても見える。読み込みの欄は ▶ と枠つき、押すと ▼ になり貼る欄が見える
+  console.log('summary-look', JSON.stringify(await b.ev(`(()=>{const s=document.querySelector('details > summary');const cs=getComputedStyle(s);return {exportVisible:document.getElementById('exportbtn').getBoundingClientRect().height>0, marker:getComputedStyle(s,'::before').content, border:cs.borderTopWidth, h:Math.round(s.getBoundingClientRect().height), importVisibleBefore:document.getElementById('importbox').getBoundingClientRect().height>0}})()`)));
+  await b.ev(`document.querySelector('details > summary').click()`); await b.sleep(100);
+  console.log('summary-open', JSON.stringify(await b.ev(`[getComputedStyle(document.querySelector('details > summary'),'::before').content, document.getElementById('importbox').getBoundingClientRect().height>0]`)));
   // 書き出し→消す→読み込み
-  await b.ev(click('tab-shop')); await b.ev(`document.querySelector('details').open=true`);
   await b.ev(click('exportbtn')); await b.sleep(300);
   // headlessではクリップボードを読めないことがある。そのときは手動コピー用の欄（コピーできなかったときに出る）から取る
   let exported = await b.ev(`(async()=>{try{return await navigator.clipboard.readText()}catch(e){return 'read-failed:'+e.name}})()`);

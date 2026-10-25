@@ -78,7 +78,12 @@
   .rows .del { padding: 0; }
   .two { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 10px; }
   .updated { font-size: 14px; color: var(--ink3); margin: 0 0 10px; }
-  details > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-weight: 600; }
+  /* 開け閉めできる欄は、ボタンのような枠と ▶／▼ で「押せる」ことを見せる（display:flex で標準の印が消えるため自前で付ける） */
+  details > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 8px; font-weight: 600; list-style: none;
+    border: 1px solid var(--line-strong); border-radius: 6px; padding: 8px 12px; margin: 0 0 10px; background: var(--surface); }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before { content: "▶"; flex: none; font-size: 12px; color: var(--accent); }
+  details[open] > summary::before { content: "▼"; }
   /* 照らし合わせ */
   .summary { display: flex; flex-wrap: wrap; gap: 6px 8px; margin: 0 0 10px; }
   .pill { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 4px 12px; font-weight: 700; font-size: 15px; border: 2px solid; }
@@ -185,12 +190,13 @@
       <div class="btns">
         <button type="button" id="sampleshop">例のお店を入れる</button>
         <button type="button" id="resetshop">登録を消す</button>
+        <button type="button" id="exportbtn">登録を文字でコピー</button>
       </div>
+      <p class="small">「登録を文字でコピー」は、別の端末へ登録を移すときに使います。移したい端末でこのページを開き、下の「別の端末から読み込む」に貼ってください。</p>
+      <p class="msg" id="exportmsg" role="status"></p>
+      <textarea id="exportbox" rows="4" readonly hidden aria-label="登録の文字"></textarea>
       <details>
-        <summary>別の端末へ移す（文字でコピー／貼って読み込む）</summary>
-        <div class="btns"><button type="button" id="exportbtn">登録を文字でコピー</button></div>
-        <p class="msg" id="exportmsg" role="status"></p>
-        <textarea id="exportbox" rows="4" readonly hidden aria-label="登録の文字"></textarea>
+        <summary>別の端末から読み込む（コピーした文字を貼る）</summary>
         <label class="f" for="importbox">コピーした文字をここに貼る</label>
         <textarea id="importbox" rows="4" autocomplete="off"></textarea>
         <div class="btns"><button type="button" id="importbtn">貼った文字を読み込む</button></div>
