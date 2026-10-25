@@ -164,6 +164,15 @@ eq('R11 zeinuki', SF.check('カット 4,500円（税抜）', shop()).items.map(i
 eq('R12 kanji chome', contact('東京都架空区見本町一丁目2番3号'), ['same:address']);
 eq('R12 addrKey 21', SF.addrKey('東京都架空区見本町二十一丁目5'), '東京都架空区見本町21-5');
 
+// 移す文字（iPhoneで途中までしかコピーされなかった件の再現。2026-10-25）
+const full = SF.exportText(shop());
+eq('X1 cut after menu row1', /途中で切れて/.test(SF.importText(full.slice(0, full.indexOf('},{') + 2)).error || ''), true);
+eq('X2 curly quotes', SF.summarize(SF.importText(full.replace(/"/g, '”')).shop || SF.blankShop()), SF.summarize(shop()));
+eq('X3 summary', SF.summarize(shop()), '営業時間・休み 8日分／メニュー 3行／住所 あり／電話 1つ／メール あり／URL 0つ／やっていないこと 1行');
+const withEmpty = shop(); withEmpty.menu.push({ name: '', alias: '', price: '' }); withEmpty.nots.push({ word: '', note: '' });
+eq('X4 drop empty rows', SF.exportText(withEmpty).length, full.length);
+eq('X5 roundtrip summary', SF.summarize(SF.importText(full).shop), SF.summarize(shop()));
+
 // 時刻・金額の入力の読み方
 eq('parseTime', ['10', '1000', '10:30', '１０：３０', '9時', '25:00', '30:00', 'abc', ''].map(SF.parseTime),
   [600, 600, 630, 630, 540, 1500, null, null, null]);

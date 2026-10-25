@@ -191,8 +191,9 @@
         <button type="button" id="sampleshop">例のお店を入れる</button>
         <button type="button" id="resetshop">登録を消す</button>
         <button type="button" id="exportbtn">登録を文字でコピー</button>
+        <button type="button" id="sharebtn" hidden>共有で送る（メモ・LINE・AirDropなど）</button>
       </div>
-      <p class="small">「登録を文字でコピー」は、別の端末へ登録を移すときに使います。移したい端末でこのページを開き、下の「別の端末から読み込む」に貼ってください。</p>
+      <p class="small">別の端末へ登録を移すときに使います。コピーするか共有で送り、移したい端末でこのページを開いて、下の「別の端末から読み込む」に貼ってください。押すと、書き出した文字が全部下の欄に出ます。</p>
       <p class="msg" id="exportmsg" role="status"></p>
       <textarea id="exportbox" rows="4" readonly hidden aria-label="登録の文字"></textarea>
       <details>
@@ -316,11 +317,33 @@ var SF = (function () {
       .map(function (x) { return { word: str(x.word, 40), note: str(x.note, 80) }; });
     return s;
   }
-  function exportText(shop) { return JSON.stringify({ app: 'shop-facts-check', v: 1, shop: sanitize(shop) }); }
+  /* 書き出しは空の行を除いて短くする（長いほど、コピーの途中で切れやすい） */
+  function exportText(shop) {
+    var s = sanitize(shop);
+    s.menu = s.menu.filter(function (x) { return x.name.trim() || x.price.trim() || x.alias.trim(); });
+    s.nots = s.nots.filter(function (x) { return x.word.trim() || x.note.trim(); });
+    return JSON.stringify({ app: 'shop-facts-check', v: 1, shop: s });
+  }
+  /* 何が入っているかの内訳（書き出し・読み込みのあとに見せて、途中で切れていないか本人が確かめられるようにする） */
+  function summarize(shop) {
+    var days = DAYS.filter(function (d) { return dayState(shop, d).kind !== 'unreg'; }).length;
+    var menu = shop.menu.filter(function (x) { return x.name.trim(); }).length;
+    var phones = shop.phones.filter(function (x) { return x.trim(); }).length, urls = shop.urls.filter(function (x) { return x.trim(); }).length;
+    var nots = shop.nots.filter(function (x) { return x.word.trim(); }).length;
+    return '営業時間・休み ' + days + '日分／メニュー ' + menu + '行／住所 ' + (shop.address.trim() ? 'あり' : 'なし') + '／電話 ' + phones + 'つ／メール ' +
+      (shop.email.trim() ? 'あり' : 'なし') + '／URL ' + urls + 'つ／やっていないこと ' + nots + '行';
+  }
   function importText(text) {
     if (typeof text !== 'string' || !text.trim()) return { error: '文字が空です' };
     if (text.length > IMPORT_MAX) return { error: '文字が長すぎます（50,000字まで）' };
-    var o; try { o = JSON.parse(text.trim()); } catch (e) { return { error: '読み込めない形の文字です。「登録を文字でコピー」でコピーした文字をそのまま貼ってください' }; }
+    /* メモアプリなどで引用符が飾り文字に変わっていても読めるようにする */
+    var t = text.trim().replace(/[“”″＂]/g, '"'), o;
+    try { o = JSON.parse(t); } catch (e) {
+      if (/^\{\s*"app"\s*:\s*"shop-facts-check"/.test(t)) {
+        return { error: '文字が途中で切れているようです（貼った文字は' + t.length + '字。最後は「}}」で終わります）。コピー元で「登録を文字でコピー」をもう一度押すか、「共有で送る」を使ってください' };
+      }
+      return { error: '読み込めない形の文字です。「登録を文字でコピー」でコピーした文字をそのまま貼ってください' };
+    }
     if (!o || o.app !== 'shop-facts-check' || !o.shop) return { error: 'このページで書き出した文字ではないようです' };
     return { shop: sanitize(o.shop) };
   }
@@ -734,7 +757,7 @@ var SF = (function () {
   var SAMPLE_TEXT = 'ヘアサロン みほんより、秋のご案内です\n営業時間は平日10時〜20時、土日祝は10時〜17時です\n定休日は水曜日となります\n人気のカットは4,500円、カラーは7,700円でご用意しています\n駐車場もございますので、お車でもお気軽にどうぞ\nご予約はお電話で 03-0000-0021 まで';
 
   return { MAX: MAX, DAYS: DAYS, DLAB: DLAB, KIND: KIND, STATUS: STATUS, normalize: normalize, parseTime: parseTime, fmt: fmt, parsePrice: parsePrice,
-    blankShop: blankShop, sanitize: sanitize, exportText: exportText, importText: importText, isEmpty: isEmpty, hoursSummary: hoursSummary,
+    blankShop: blankShop, sanitize: sanitize, exportText: exportText, importText: importText, summarize: summarize, isEmpty: isEmpty, hoursSummary: hoursSummary,
     expandSeq: expandSeq, findTimes: findTimes, addrKey: addrKey, check: check, segment: segment, SAMPLE_SHOP: SAMPLE_SHOP, SAMPLE_TEXT: SAMPLE_TEXT };
 })();
 if (typeof module !== 'undefined') module.exports = SF;
@@ -863,22 +886,46 @@ if (typeof module !== 'undefined') module.exports = SF;
     try { if (storageOK) localStorage.removeItem(KEY); } catch (e) { /* 何もしない */ }
     renderShop(); $('updated').textContent = 'まだ登録していません'; scheduleCheck();
   });
-  function copyText(text, msgEl, box) {
+  /* 書き出した文字は、毎回全文を欄に出す（コピーが途中で切れても、目で見て全部を選び直せるように） */
+  function showExport(text) {
+    var box = $('exportbox');
+    box.hidden = false; box.value = text;
+    box.style.height = 'auto'; box.style.height = Math.min(box.scrollHeight + 4, 1200) + 'px';
+    return box;
+  }
+  /* iPhoneでは select() だと全部が選ばれないことがあるため、読み取り専用を外して範囲で選ぶ */
+  function selectAll(box) {
+    box.readOnly = false; box.focus(); box.setSelectionRange(0, box.value.length); box.readOnly = true;
+  }
+  function copyText(text, msgEl) {
+    var box = showExport(text), info = '（' + text.length + '字。' + SF.summarize(SF.importText(text).shop) + '）';
     function fallback() {
-      box.hidden = false; box.value = text; box.focus(); box.select();
+      selectAll(box);
       var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
-      msgEl.textContent = ok ? 'コピーしました' : '下の文字を選択しました。長押し（パソコンはCtrl+C）でコピーしてください';
+      msgEl.textContent = ok ? 'コピーしました' + info + '。移したい端末でこのページを開き、「別の端末から読み込む」に貼ってください'
+        : '下の欄の文字を、最後の「}}」まで全部選んでコピーしてください' + info;
     }
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(function () { msgEl.textContent = 'コピーしました。移したい端末でこのページを開き、「貼った文字を読み込む」に貼ってください'; }, fallback);
+      navigator.clipboard.writeText(text).then(function () { msgEl.textContent = 'コピーしました' + info + '。移したい端末でこのページを開き、「別の端末から読み込む」に貼ってください'; }, fallback);
     } else fallback();
   }
-  $('exportbtn').addEventListener('click', function () { copyText(SF.exportText(shop), $('exportmsg'), $('exportbox')); });
+  $('exportbtn').addEventListener('click', function () { copyText(SF.exportText(shop), $('exportmsg')); });
+  /* 共有シート（iPhoneのメモ・LINE・AirDropなど）で送る。使えるブラウザだけボタンを出す */
+  if (navigator.share) {
+    $('sharebtn').hidden = false;
+    $('sharebtn').addEventListener('click', function () {
+      var text = SF.exportText(shop);
+      showExport(text);
+      navigator.share({ text: text }).then(function () {
+        $('exportmsg').textContent = '共有しました（' + text.length + '字。' + SF.summarize(SF.importText(text).shop) + '）。受け取った端末で、届いた文字を全部コピーして「別の端末から読み込む」に貼ってください';
+      }, function () { /* 共有をやめたときは何もしない */ });
+    });
+  }
   $('importbtn').addEventListener('click', function () {
     var r = SF.importText($('importbox').value);
     if (r.error) { $('importmsg').textContent = r.error; return; }
     if (!SF.isEmpty(shop) && !window.confirm('今の登録を、貼った文字の内容で置き換えます。よろしいですか？')) return;
-    shop = r.shop; renderShop(); save(); $('importbox').value = ''; $('importmsg').textContent = '読み込みました'; scheduleCheck();
+    shop = r.shop; renderShop(); save(); $('importbox').value = ''; $('importmsg').textContent = '読み込みました（' + SF.summarize(shop) + '）'; scheduleCheck();
   });
 
   /* ---- ② 照らし合わせ ---- */

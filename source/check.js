@@ -70,6 +70,8 @@ const summary = `[document.getElementById('summary').innerText.replace(/\\n+/g,'
   let exported = await b.ev(`(async()=>{try{return await navigator.clipboard.readText()}catch(e){return 'read-failed:'+e.name}})()`);
   if (exported.startsWith('read-failed')) exported = await b.ev(`document.getElementById('exportbox').value`);
   console.log('export', JSON.stringify([await b.ev(`document.getElementById('exportmsg').textContent`), exported.slice(0, 50)]));
+  // 書き出した全文が欄に出て、手でコピーする経路では最後の文字まで選ばれている
+  console.log('export-box', JSON.stringify(await b.ev(`(()=>{const x=document.getElementById('exportbox');const r=x.getBoundingClientRect();return {shown:!x.hidden, len:x.value.length, selStart:x.selectionStart, selEnd:x.selectionEnd, endsWith:x.value.slice(-2), fullyVisible:x.scrollHeight<=x.clientHeight+2, h:Math.round(r.height), share:!document.getElementById('sharebtn').hidden}})()`)));
   await b.ev(`window.confirm=()=>true;` + click('resetshop')); await b.sleep(200);
   console.log('after-reset', JSON.stringify(await b.ev(`[localStorage.getItem('mw-day079-shop'), document.getElementById('updated').textContent]`)));
   await b.ev(setVal('importbox', '{"app":')); await b.ev(click('importbtn'));
