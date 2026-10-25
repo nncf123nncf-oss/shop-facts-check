@@ -148,7 +148,7 @@ eq('R7 sorezore', priceOnly('カット・カラーはそれぞれ4,950円、7,70
 eq('R7 list', priceOnly('カット、カラー、パーマ：4,950円／7,700円／9,900円').filter(x => x.startsWith('diff')), []);
 eq('R7 pre', priceOnly('4,950円のカットと7,700円のカラー').filter(x => x.startsWith('diff')), []);
 // 中8 休みの曜日を含むまとまり・第n
-eq('R8 weekday note', SF.check('平日は10時〜19時です', shop()).items[0].note, '登録では 火曜 は休みです（文の「平日」に含まれます）');
+eq('R8 weekday note', SF.check('平日は10時〜19時です', shop()).items[0].note, '登録では火曜は休みです（文の「平日」に含まれます）');
 eq('R8 nth', dayOnly('定休日 火曜・第2月曜'), ['none:定休日 火曜']);
 eq('R8 nth2', dayOnly('定休日は火曜日・第3水曜日'), ['none:定休日は火曜日']);
 // 中9 夜・予約の締め切り

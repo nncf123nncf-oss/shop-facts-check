@@ -76,6 +76,11 @@ const summary = `[document.getElementById('summary').innerText.replace(/\\n+/g,'
   await b.ev(`(()=>{const n=document.querySelector('#nots input');n.value='<img src=x onerror="window.__x=2">';n.dispatchEvent(new Event('input'))})()`); await b.sleep(300);
   await b.ev(click('tab-check')); await b.ev(setVal('ai', '<img src=x onerror="window.__x=3">"><script>window.__x=4</script> <img src=x onerror="window.__x=2"> カット4,950円')); await b.sleep(400);
   console.log('xss', JSON.stringify(await b.ev(`({x:window.__x, imgs:document.querySelectorAll('main img').length, scripts:document.querySelectorAll('main script').length, marked:document.getElementById('marked').innerText.slice(0,60)})`)));
+  // 印のラベルだけが行末に残り、対象の文字が次の行へ送られる数（tadasuの指摘の再計測。0件であること）
+  await b.open(ORIGIN, 375, 2000, 2, true, 'light');
+  await b.ev(`window.confirm=()=>true;document.getElementById('tab-check').click()`);
+  await b.ev(setVal('ai', 'ご予約は https://example.com/very/long/path/to/reservation/page/salon-mihon から。お店は東京都架空区見本町1-2-3。料金 123,456,789円。営業時間は平日10時〜20時。電話 03-0000-0021')); await b.sleep(400);
+  console.log('label-orphans', JSON.stringify(await b.ev(`(()=>{const ms=[...document.querySelectorAll('#marked .mk')];return {marks:ms.length, orphans:ms.filter(m=>{const l=m.querySelector('.lb').getBoundingClientRect();const t=m.querySelector('.head').lastChild;const r=document.createRange();r.setStart(t,0);r.setEnd(t,t.length);return Math.abs(r.getBoundingClientRect().top-l.top)>12}).length, sw:document.documentElement.scrollWidth}})()`)));
   // 一覧から本文の印へ
   await b.ev(`document.querySelector('#items button').click()`); await b.sleep(100);
   console.log('jump', JSON.stringify(await b.ev(`document.querySelectorAll('#marked .mk.flash').length`)));

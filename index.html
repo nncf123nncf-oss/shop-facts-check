@@ -518,7 +518,7 @@ var SF = (function () {
     while ((m = reNo.exec(s2))) {
       if (negated(m.index + m[0].length)) continue;
       if (!anyHours) { add('day', 'none', m.index, m.index + m[0].length, '', '営業時間・休みが登録されていません'); continue; }
-      if (cw.length) add('day', 'diff', m.index, m.index + m[0].length, '休み: ' + joinDays(cw), '登録では ' + joinDays(cw) + ' が休みです');
+      if (cw.length) add('day', 'diff', m.index, m.index + m[0].length, '休み: ' + joinDays(cw), '登録では' + joinDays(cw) + 'が休みです');
       else add('day', 'same', m.index, m.index + m[0].length, hoursSummary(shop), '');
     }
     function judgeClosed(ns, ne, days, strict) {
@@ -529,10 +529,10 @@ var SF = (function () {
       var reg = cw.length ? '休み: ' + joinDays(cw) : hoursSummary(shop);
       if (opens.length) {
         var st = dayState(shop, opens[0]);
-        add('day', 'diff', ns, ne, reg, '文では ' + joinDays(days) + ' が休み。登録では ' + joinDays(opens) + ' は営業日です（' + fmt(st.o) + '〜' + fmt(st.c) + 'など）');
-      } else if (unreg.length === days.length) add('day', 'none', ns, ne, reg, joinDays(unreg) + ' の営業時間・休みは登録されていません');
+        add('day', 'diff', ns, ne, reg, '文では' + joinDays(days) + 'が休み。登録では' + joinDays(opens) + 'は営業日です（' + fmt(st.o) + '〜' + fmt(st.c) + 'など）');
+      } else if (unreg.length === days.length) add('day', 'none', ns, ne, reg, joinDays(unreg) + 'の営業時間・休みは登録されていません');
       else if (strict && cw.some(function (d) { return days.indexOf(d) < 0; })) {
-        add('day', 'diff', ns, ne, reg, '登録ではほかに ' + joinDays(cw.filter(function (d) { return days.indexOf(d) < 0; })) + ' も休みです');
+        add('day', 'diff', ns, ne, reg, '登録ではほかに' + joinDays(cw.filter(function (d) { return days.indexOf(d) < 0; })) + 'も休みです');
       } else add('day', 'same', ns, ne, reg, '');
     }
     var reC2 = new RegExp('定休日?\\s?(?:は|:)?\\s?(' + DAYLIST + ')', 'g');
@@ -544,8 +544,8 @@ var SF = (function () {
       if (isDigit(s2.charAt(m.index - 1)) || negated(m.index + m[0].length)) continue;
       var ds = daysIn(m[1]), cl = ds.filter(function (d) { return dayState(shop, d).kind === 'closed'; });
       var un = ds.filter(function (d) { return dayState(shop, d).kind === 'unreg'; });
-      if (cl.length) add('day', 'diff', m.index, m.index + m[0].length, '休み: ' + joinDays(cw.length ? cw : cl), '登録では ' + joinDays(cl) + ' は休みです');
-      else if (un.length === ds.length) add('day', 'none', m.index, m.index + m[0].length, '', joinDays(un) + ' の営業時間は登録されていません');
+      if (cl.length) add('day', 'diff', m.index, m.index + m[0].length, '休み: ' + joinDays(cw.length ? cw : cl), '登録では' + joinDays(cl) + 'は休みです');
+      else if (un.length === ds.length) add('day', 'none', m.index, m.index + m[0].length, '', joinDays(un) + 'の営業時間は登録されていません');
       else add('day', 'same', m.index, m.index + m[0].length, hoursSummary(shop), '');
     }
 
@@ -606,14 +606,14 @@ var SF = (function () {
         var st = D.map(function (d) { return { d: d, st: dayState(shop, d) }; });
         var opens = st.filter(function (x) { return x.st.kind === 'open'; });
         var closedAll = st.every(function (x) { return x.st.kind === 'closed'; });
-        if (closedAll) { add('hours', 'diff', r.s, r.e, hoursSummary(shop), said + '登録では ' + joinDays(D) + ' は休みです'); return; }
-        if (!opens.length) { add('hours', 'none', r.s, r.e, hoursSummary(shop), joinDays(D) + ' の営業時間は登録されていません'); return; }
+        if (closedAll) { add('hours', 'diff', r.s, r.e, hoursSummary(shop), said + '登録では' + joinDays(D) + 'は休みです'); return; }
+        if (!opens.length) { add('hours', 'none', r.s, r.e, hoursSummary(shop), joinDays(D) + 'の営業時間は登録されていません'); return; }
         var bad = opens.filter(function (x) { return x.st.o !== r.o || x.st.c !== r.c; });
         if (bad.length) add('hours', 'diff', r.s, r.e, hoursSummary(shop), said + '登録は ' + groupHours(bad) + ' です');
         else {
           var off = st.filter(function (x) { return x.st.kind === 'closed'; }).map(function (x) { return x.d; });
           add('hours', 'same', r.s, r.e, joinDays(opens.map(function (x) { return x.d; })) + ' ' + fmt(r.o) + '〜' + fmt(r.c),
-            off.length ? '登録では ' + joinDays(off) + ' は休みです（文の「' + ctxWord + '」に含まれます）' : '');
+            off.length ? '登録では' + joinDays(off) + 'は休みです（文の「' + ctxWord + '」に含まれます）' : '');
         }
       } else {
         var hit = DAYS.filter(function (d) { var x = dayState(shop, d); return x.kind === 'open' && x.o === r.o && x.c === r.c; });
@@ -642,7 +642,7 @@ var SF = (function () {
       if (!pool.length) { add('time', 'none', t.s, t.e, hoursSummary(shop), '比べられる営業時間の登録がありません'); return; }
       var hit = pool.filter(function (d) { var x = dayState(shop, d); return (field === 'o' ? x.o : x.c) === t.min; });
       if (hit.length === pool.length || (!D.length && hit.length)) add('time', 'same', t.s, t.e, joinDays(hit) + ' の' + name + ' ' + fmt(t.min), '');
-      else add('time', 'diff', t.s, t.e, hoursSummary(shop), '文では' + (D.length ? ' ' + ctxWord + ' の' : '') + name + ' ' + fmt(t.min) + '。登録の' + name + 'と合いません');
+      else add('time', 'diff', t.s, t.e, hoursSummary(shop), '文では' + (D.length ? ctxWord + 'の' : '') + name + ' ' + fmt(t.min) + '。登録の' + name + 'と合いません');
     });
 
     /* 料金 */
@@ -689,7 +689,7 @@ var SF = (function () {
       var ex = h.x.price / 1.1, near = s2.slice(a.e, a.e + 6), taxed = /税込|込み/.test(near), exSaid = /税抜|税別|\+税/.test(near);
       var looksEx = !taxed && [Math.round(ex), Math.floor(ex), Math.ceil(ex)].indexOf(a.v) >= 0;
       if (exSaid && looksEx) { add('price', 'check', a.s, a.e, reg, '文は税抜の表記で、登録（税込）を税抜にした額と合います。表記をそろえるか確認してください'); return; }
-      add('price', 'diff', a.s, a.e, reg, '文では ' + h.x.label + ' が ' + yen(a.v) + '。' + (looksEx ? '税抜の額かもしれません' : '登録の金額と違います'));
+      add('price', 'diff', a.s, a.e, reg, '文では' + h.x.label + 'が' + yen(a.v) + '。' + (looksEx ? '税抜の額かもしれません' : '登録の金額と違います'));
     });
     if (menu.length) amounts.forEach(function (a) {
       if (a.used) return;
