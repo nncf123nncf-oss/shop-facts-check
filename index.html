@@ -195,11 +195,11 @@
       </div>
       <p class="small">別の端末へ登録を移すときに使います。コピーするか共有で送り、移したい端末でこのページを開いて、下の「別の端末から読み込む」に貼ってください。押すと、書き出した文字が全部下の欄に出ます。</p>
       <p class="msg" id="exportmsg" role="status"></p>
-      <textarea id="exportbox" rows="4" readonly hidden aria-label="登録の文字"></textarea>
+      <textarea id="exportbox" rows="4" readonly hidden aria-label="登録の文字" translate="no" class="notranslate" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
       <details>
         <summary>別の端末から読み込む（コピーした文字を貼る）</summary>
         <label class="f" for="importbox">コピーした文字をここに貼る</label>
-        <textarea id="importbox" rows="4" autocomplete="off"></textarea>
+        <textarea id="importbox" rows="4" autocomplete="off" translate="no" class="notranslate" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
         <div class="btns"><button type="button" id="importbtn">貼った文字を読み込む</button></div>
         <p class="msg" id="importmsg" role="status"></p>
       </details>
@@ -318,12 +318,23 @@ var SF = (function () {
     return s;
   }
   /* 書き出しは空の行を除いて短くする（長いほど、コピーの途中で切れやすい） */
-  function exportText(shop) {
+  /* 別の端末へ移す文字は「SFC1.<英数字の塊>.<確かめ用の数字>」にする。
+     中身のJSONのままだと、自動翻訳で "address"→"住所" のように目印が日本語に置き換わり、読み込めない項目が出た（iPhoneで実際に起きた）。
+     英数字の塊にしておけば翻訳されにくく、書き換わっても確かめ用の数字で気づける */
+  function toB64(str) { return btoa(unescape(encodeURIComponent(str))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+  function fromB64(t) { t = t.replace(/-/g, '+').replace(/_/g, '/'); while (t.length % 4) t += '='; return decodeURIComponent(escape(atob(t))); }
+  function checksum(str) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return h.toString(36);
+  }
+  function exportJson(shop) {
     var s = sanitize(shop);
     s.menu = s.menu.filter(function (x) { return x.name.trim() || x.price.trim() || x.alias.trim(); });
     s.nots = s.nots.filter(function (x) { return x.word.trim() || x.note.trim(); });
     return JSON.stringify({ app: 'shop-facts-check', v: 1, shop: s });
   }
+  function exportText(shop) { var j = exportJson(shop); return 'SFC1.' + toB64(j) + '.' + checksum(j); }
   /* 何が入っているかの内訳（書き出し・読み込みのあとに見せて、途中で切れていないか本人が確かめられるようにする） */
   function summarize(shop) {
     var days = DAYS.filter(function (d) { return dayState(shop, d).kind !== 'unreg'; }).length;
@@ -336,7 +347,20 @@ var SF = (function () {
   function importText(text) {
     if (typeof text !== 'string' || !text.trim()) return { error: '文字が空です' };
     if (text.length > IMPORT_MAX) return { error: '文字が長すぎます（50,000字まで）' };
-    /* メモアプリなどで引用符が飾り文字に変わっていても読めるようにする */
+    /* 新しい形（SFC1.…）。前後に別の文字が付いていても、空白や改行が挟まっていても探して読む */
+    var flat = text.normalize('NFKC').replace(/\s+/g, '').replace(/[。．]/g, '.');
+    var tk = /SFC1\.([A-Za-z0-9_-]+)\.([0-9a-z]+)/i.exec(flat);
+    if (tk) {
+      var BROKEN = '文字が途中で切れているか、書き換わっているようです（' + flat.length + '字）。コピー元で「登録を文字でコピー」をもう一度押すか、「共有で送る」を使ってください';
+      var j0; try { j0 = fromB64(tk[1]); } catch (e) { return { error: BROKEN }; }
+      if (checksum(j0) !== tk[2].toLowerCase()) return { error: BROKEN };
+      var o0; try { o0 = JSON.parse(j0); } catch (e) { return { error: BROKEN }; }
+      if (!o0 || o0.app !== 'shop-facts-check' || !o0.shop) return { error: 'このページで書き出した文字ではないようです' };
+      return { shop: sanitize(o0.shop) };
+    }
+    if (/^SFC1/i.test(flat)) return { error: '文字が途中で切れているようです（' + flat.length + '字）。コピー元で「登録を文字でコピー」をもう一度押すか、「共有で送る」を使ってください' };
+    /* 前の形（JSONのまま）。この端末に残っている登録と、改修前に書き出した文字を読むため。
+       メモアプリなどで引用符が飾り文字に変わっていても読めるようにする */
     var t = text.trim().replace(/[“”″＂]/g, '"'), o;
     try { o = JSON.parse(t); } catch (e) {
       if (/^\{\s*"app"\s*:\s*"shop-facts-check"/.test(t)) {
@@ -903,7 +927,7 @@ if (typeof module !== 'undefined') module.exports = SF;
       selectAll(box);
       var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
       msgEl.textContent = ok ? 'コピーしました' + info + '。移したい端末でこのページを開き、「別の端末から読み込む」に貼ってください'
-        : '下の欄の文字を、最後の「}}」まで全部選んでコピーしてください' + info;
+        : '下の欄の文字を、最後の文字まで全部選んでコピーしてください' + info;
     }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () { msgEl.textContent = 'コピーしました' + info + '。移したい端末でこのページを開き、「別の端末から読み込む」に貼ってください'; }, fallback);

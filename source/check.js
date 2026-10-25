@@ -45,7 +45,7 @@ const summary = `[document.getElementById('summary').innerText.replace(/\\n+/g,'
   phase = 'after';
   // 端末への保存: 店の情報だけ。貼った文は入らない
   await b.ev(click('tab-check')); await b.ev(setVal('ai', 'ひみつの文ABC カット4,950円')); await b.sleep(400);
-  console.log('storage', JSON.stringify(await b.ev(`(async()=>{const v=localStorage.getItem('mw-day079-shop')||'';return {keys:Object.keys(localStorage), hasShop:v.includes('ヘアサロン'), hasText:v.includes('ひみつ'), ss:sessionStorage.length, idb:(indexedDB.databases?(await indexedDB.databases()).length:'n/a'), cookie:document.cookie}})()`)));
+  console.log('storage', JSON.stringify(await b.ev(`(async()=>{const raw=localStorage.getItem('mw-day079-shop')||'';const m=/^SFC1.([A-Za-z0-9_-]+)./.exec(raw);const v=m?decodeURIComponent(escape(atob(m[1].replace(/-/g,'+').replace(/_/g,'/')+'==='.slice((m[1].length+3)%4)))):raw;return {keys:Object.keys(localStorage), hasShop:v.includes('ヘアサロン'), hasText:v.includes('ひみつ'), ss:sessionStorage.length, idb:(indexedDB.databases?(await indexedDB.databases()).length:'n/a'), cookie:document.cookie}})()`)));
   // 再読み込み: 登録は残り②が開く、貼った文は消える
   await b.ev('location.reload()'); await b.sleep(900);
   console.log('reload', JSON.stringify(await b.ev(`[document.getElementById('tab-check').getAttribute('aria-selected'), document.getElementById('ai').value]`)));

@@ -3,7 +3,7 @@
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const src = /<script id="core">([\s\S]*?)<\/script>/.exec(html)[1];
-const ctx = { module: { exports: {} }, console };
+const ctx = { module: { exports: {} }, console, btoa, atob };
 vm.createContext(ctx); vm.runInContext(src, ctx);
 const SF = ctx.module.exports;
 let pass = 0, fail = 0;
@@ -166,12 +166,19 @@ eq('R12 addrKey 21', SF.addrKey('東京都架空区見本町二十一丁目5'), 
 
 // 移す文字（iPhoneで途中までしかコピーされなかった件の再現。2026-10-25）
 const full = SF.exportText(shop());
-eq('X1 cut after menu row1', /途中で切れて/.test(SF.importText(full.slice(0, full.indexOf('},{') + 2)).error || ''), true);
-eq('X2 curly quotes', SF.summarize(SF.importText(full.replace(/"/g, '”')).shop || SF.blankShop()), SF.summarize(shop()));
+eq('X1 cut in the middle', /途中で切れて/.test(SF.importText(full.slice(0, 300)).error || ''), true);
+const legacy = JSON.stringify({ app: 'shop-facts-check', v: 1, shop: shop() });
+eq('X2 legacy json with curly quotes', SF.summarize(SF.importText(legacy.replace(/"/g, '”')).shop || SF.blankShop()), SF.summarize(shop()));
 eq('X3 summary', SF.summarize(shop()), '営業時間・休み 8日分／メニュー 3行／住所 あり／電話 1つ／メール あり／URL 0つ／やっていないこと 1行');
 const withEmpty = shop(); withEmpty.menu.push({ name: '', alias: '', price: '' }); withEmpty.nots.push({ word: '', note: '' });
 eq('X4 drop empty rows', SF.exportText(withEmpty).length, full.length);
 eq('X5 roundtrip summary', SF.summarize(SF.importText(full).shop), SF.summarize(shop()));
+eq('X6 token shape', /^SFC1\.[A-Za-z0-9_-]+\.[0-9a-z]+$/.test(full), true);
+eq('X7 spaces and newlines inserted', SF.summarize(SF.importText('LINEで送ります\n' + full.slice(0, 40) + ' \n ' + full.slice(40, 120) + ' ' + full.slice(120) + '\nよろしく').shop || SF.blankShop()), SF.summarize(shop()));
+const flip = full.slice(0, 50) + (full[50] === 'A' ? 'B' : 'A') + full.slice(51);
+eq('X8 altered char detected', /書き換わって/.test(SF.importText(flip).error || ''), true);
+eq('X9 translated legacy keys lose fields (why the token exists)', SF.importText(legacy.replace('"address"', '"住所"')).shop.address, '');
+eq('X10 fullwidth period', SF.summarize(SF.importText(full.replace(/\./g, '。')).shop || SF.blankShop()), SF.summarize(shop()));
 
 // 時刻・金額の入力の読み方
 eq('parseTime', ['10', '1000', '10:30', '１０：３０', '9時', '25:00', '30:00', 'abc', ''].map(SF.parseTime),
